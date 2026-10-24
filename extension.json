@@ -1,12 +1,12 @@
 {
 	"name": "auto-routing-with-jspcb",
 	"uuid": "fe81c92e8cae445f9e4e4117058555f5",
-	"displayName": "JS-PCB 自动布线器",
-	"description": "基于 JS-PCB 的嘉立创EDA专业版自动布线扩展",
-	"version": "1.5.0",
-	"publisher": "JLCEDA <support@lceda.cn>",
+	"displayName": "JsPCB自动布线",
+	"description": "基于 JS-PCB 的自动布线器",
+	"version": "1.6.0",
+	"publisher": "JS-PCB",
 	"engines": {
-		"eda": "^2.3.0"
+		"eda": "^3.2.0"
 	},
 	"license": "GPL-2.0",
 	"repository": {
@@ -15,7 +15,6 @@
 	},
 	"categories": "PCB",
 	"keywords": [
-		"SDK",
 		"Autorouter",
 		"PCB",
 		"Routing",
@@ -24,8 +23,8 @@
 	"images": {
 		"logo": "./images/logo.png"
 	},
-	"homepage": "https://pro.lceda.cn",
-	"bugs": "https://lceda.cn/page/feedback?originPage=other",
+	"homepage": "https://github.com/XHTimmo/js-pcb",
+	"bugs": "https://github.com/XHTimmo/js-pcb/issues",
 	"activationEvents": {},
 	"entry": "./dist/index",
 	"dependentExtensions": {},
@@ -33,11 +32,11 @@
 		"pcb": [
 			{
 				"id": "JsPCB",
-				"title": "自动布线",
+				"title": "JsPCB自动布线",
 				"menuItems": [
 					{
 						"id": "AutoRouteIFrame",
-						"title": "JS-PCB 自动布线器",
+						"title": "JsPCB自动布线...",
 						"registerFn": "startAutoRouteIFrame"
 					}
 				]

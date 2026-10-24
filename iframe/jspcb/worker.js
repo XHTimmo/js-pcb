@@ -55,7 +55,7 @@ function pcb_thread(paramater_array)
 	//run number of samples of solution and pick best one
 	let best_pcb = current_pcb.output_pcb();
 	postMessage(best_pcb);
-	let best_cost = 1000000000;
+	let best_cost = Infinity;
 	for (let i = 0; i < arg_s; ++i)
 	{
 		// 发送日志消息
@@ -67,9 +67,24 @@ function pcb_thread(paramater_array)
 		let startTime = Date.now();
 		if (!current_pcb.route(arg_t))
 		{
+			if (current_pcb.m_timedout)
+			{
+				// 已到超时时间：保留目前的最佳结果并结束，避免无限等待。
+				let routed_cost = current_pcb.cost();
+				if (routed_cost < best_cost)
+				{
+					best_cost = routed_cost;
+					best_pcb = current_pcb.output_pcb();
+				}
+				postMessage({
+					type: 'log',
+					message: `[采样 ${i+1}/${arg_s}] 超时（${arg_t}s），已保留当前最佳结果`
+				});
+				break;
+			}
 			current_pcb.increase_quantization();
 			postMessage({
-				type: 'log', 
+				type: 'log',
 				message: `[采样 ${i+1}/${arg_s}] 布线失败，增加量化精度重试`
 			});
 			continue;
@@ -97,15 +112,28 @@ function pcb_thread(paramater_array)
 		}
 	}
 	
+	const total_nets = current_pcb.connected_nets();
+	const unrouted = current_pcb.unrouted_nets();
 	postMessage({
-		type: 'log', 
-		message: `所有采样完成。最佳代价: ${best_cost}`
+		type: 'log',
+		message: `所有采样完成。网络 ${total_nets - unrouted}/${total_nets} 已布通，未布通 ${unrouted} 个。`
 	});
-	postMessage(best_pcb);
+	postMessage({type: 'done', data: best_pcb, cost: best_cost, unrouted: unrouted, total: total_nets});
 }
 
 //thread event listner
 addEventListener('message', function(event)
 {
-	pcb_thread(event.data);
+	try
+	{
+		pcb_thread(event.data);
+	}
+	catch (e)
+	{
+		// 把异常回传给主线程，否则 worker 内报错时界面只会一直停住。
+		postMessage({
+			type: 'error',
+			message: (e && e.stack) ? e.stack : String(e)
+		});
+	}
 }, false);

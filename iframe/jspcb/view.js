@@ -3,7 +3,7 @@
 var js_pcb = js_pcb || {};
 (function()
 {
-	function view_pcb(pcb_data, scale, margin)
+	function view_pcb(pcb_data, scale, margin, boundary)
 	{
 		//Width and height etc
 		let width, height, depth;
@@ -150,6 +150,19 @@ var js_pcb = js_pcb || {};
 					terminal_z = path[node][2];
 				}
 			}
+		}
+
+		//draw board outline (板框)
+		if (boundary && boundary.length > 1)
+		{
+			let outline = boundary.concat([boundary[0]]);
+			pcb.append("path")
+				.attr("d", path_func(outline) + "Z")
+				.attr("stroke", "#facc15")
+				.attr("stroke-width", 1.2 / scale)
+				.attr("stroke-opacity", 0.9)
+				.attr("stroke-linejoin", "round")
+				.attr("fill", "none");
 		}
 	}
 

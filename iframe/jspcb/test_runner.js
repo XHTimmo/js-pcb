@@ -6,7 +6,7 @@ const vm = require('vm');
 global.js_pcb = {};
 global.window = global;
 global.self = global;
-// 某些脚本可能需要 require (如 jlc2kicad.js)
+// 某些脚本可能需要 require (如 dsn-normalizer.js)
 global.require = require;
 global.module = { exports: {} }; // Mock module
 
@@ -42,12 +42,12 @@ const libFiles = [
     'layer.js',
     'router.js',
     'dsn2pcb.js',
-    'jlc2kicad.js',
+    'dsn-normalizer.js',
     'pcb2ses.js'
 ];
 
 console.log('Loading libraries...');
-// 防止 jlc2kicad.js 执行 CLI 逻辑
+// 防止 dsn-normalizer.js 执行 CLI 逻辑
 const originalArgv = process.argv;
 process.argv = undefined;
 
@@ -94,32 +94,32 @@ async function testFile(filename) {
 
     let dsnContent = fs.readFileSync(dsnPath, 'utf8');
     
-    // 1. JLC 转换 (总是尝试转换，如果是 KiCad 格式会报错或原样返回，但示例.dsn 是 JLC)
+    // 1. DSN 归一化（示例.dsn 是嘉立创格式；若已是标准格式则会原样返回）
     // 根据 main.js，用户勾选转换。
-    console.log('Step 1: Converting JLC DSN to KiCad DSN...');
-    let kicadDsn = dsnContent;
-    let isJlcConverted = true; // 假设是 JLC
+    console.log('Step 1: Normalizing EasyEDA DSN...');
+    let normalizedDsn = dsnContent;
+    let isDsnNormalized = true; // 假设是嘉立创格式
     try {
-        kicadDsn = global.convertJlcToKicad(dsnContent);
-        console.log('Conversion successful. Preview (first 2000 chars):');
-        console.log(kicadDsn.substring(0, 2000));
+        normalizedDsn = global.normalizeDsn(dsnContent);
+        console.log('Normalization successful. Preview (first 2000 chars):');
+        console.log(normalizedDsn.substring(0, 2000));
         // Check for network section
-        if (kicadDsn.includes('(network')) {
-            console.log('✅ Found (network ... ) section in converted DSN');
+        if (normalizedDsn.includes('(network')) {
+            console.log('✅ Found (network ... ) section in normalized DSN');
         } else {
-            console.log('❌ (network ... ) section MISSING in converted DSN');
+            console.log('❌ (network ... ) section MISSING in normalized DSN');
         }
     } catch (e) {
 
-        console.error('Conversion failed or not needed:', e);
-        isJlcConverted = false;
+        console.error('Normalization failed or not needed:', e);
+        isDsnNormalized = false;
     }
 
     // 2. 解析 DSN 到 PCB 数据
     console.log('Step 2: Parsing DSN to PCB data...');
     const gap = 2; // 默认值
-    // dsn2pcb 需要 KiCad 格式的 DSN
-    const pcbInputData = global.js_pcb.dsn2pcb(kicadDsn, gap);
+    // dsn2pcb 需要标准 Specctra DSN（0.1um 坐标、F.Cu/B.Cu 层名）
+    const pcbInputData = global.js_pcb.dsn2pcb(normalizedDsn, gap);
     console.log(`DEBUG: pcbInputData tracks count: ${pcbInputData[1].length}`);
     console.log(`DEBUG: PCB Dimensions: ${pcbInputData[0]}`);
     
@@ -157,15 +157,15 @@ async function testFile(filename) {
     console.log('Step 4: Exporting SES...');
     // parseDsnInfo 需要传入 *转换后* 的 DSN 还是 *原始* DSN？
     // pcb2ses.js 的 parseDsnInfo 用来获取 netNames 和 minx/miny
-    // 如果是 JLC 转换模式，minx/miny 应该是原始 DSN 的值 (因为 dsn2pcb 会归一化，我们需要还原)
+    // 如果做了归一化，minx/miny 用原始 DSN 的值（dsn2pcb 内部会平移坐标，导出时需要还原）
     // 但是 pcb2ses.js 现在的 calculateGlobalBounds 是从 parseDsnInfo 内部调用的
-    // 我们应该传给它 kicadDsn 还是 dsnContent?
+    // 我们应该传给它 normalizedDsn 还是 dsnContent?
     // main.js 中: const dsnInfo = parseDsnInfo(originalFile); 传入的是原始文件内容
     // 所以这里应该传 dsnContent (原始 JLC DSN)
     
     const dsnInfo = global.parseDsnInfo(dsnContent); 
     dsnInfo.fileName = path.basename(filename, '.dsn');
-    dsnInfo.isJlcConverted = isJlcConverted;
+    dsnInfo.isDsnNormalized = isDsnNormalized;
 
     // 检查 parseDsnInfo 的结果
     console.log(`Parsed DSN Info: NetNames Count = ${dsnInfo.netNames.length}`);

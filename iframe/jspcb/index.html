@@ -2,12 +2,12 @@
 <html lang="zh-CN">
 <head>
 	<meta charset="utf-8">
-	<title>JS-PCB 自动布线器 v1.5</title>
+	<title>JS-PCB 自动布线器 v1.6.0</title>
 	<script type="text/javascript" src="/iframe/jspcb/d3.v4.min.js"></script>
 	<script type="text/javascript" src="/iframe/jspcb/mymath.js"></script>
 	<script type="text/javascript" src="/iframe/jspcb/view.js"></script>
 	<script type="text/javascript" src="/iframe/jspcb/dsn2pcb.js"></script>
-	<script type="text/javascript" src="/iframe/jspcb/jlc2kicad.js"></script>
+	<script type="text/javascript" src="/iframe/jspcb/dsn-normalizer.js"></script>
 	<script type="text/javascript" src="/iframe/jspcb/pcb2ses.js"></script>
 	<style type="text/css">
 		:root {
@@ -61,13 +61,13 @@
 			overflow: hidden;
 			display: flex;
 			color: var(--foreground);
-			font-size: 13px;
-			line-height: 1.5;
+			font-size: 12px;
+			line-height: 1.45;
 		}
-		
+
 		/* Sidebar Styles */
 		.sidebar {
-			width: 280px;
+			width: 340px;
 			background-color: var(--sidebar);
 			border-right: 1px solid var(--sidebar-border);
 			padding: 0;
@@ -80,65 +80,71 @@
 		.sidebar-content {
 			flex: 1;
 			overflow-y: auto;
+			overflow-x: hidden;
 			padding: 16px;
 			display: flex;
 			flex-direction: column;
-			gap: 20px;
+			gap: 18px;
+			/* 内容在 700px 高度内可完整显示；窗口更矮时仍可滚动，但不显示滚动条 */
+			scrollbar-width: none;
+			-ms-overflow-style: none;
 		}
-		
+
 		.sidebar-content::-webkit-scrollbar {
-			width: 6px;
+			width: 0;
+			height: 0;
+			display: none;
 		}
-		.sidebar-content::-webkit-scrollbar-thumb {
-			background: var(--sidebar-border);
-			border-radius: 3px;
-		}
-		
+
 		.panel {
 			background: transparent;
-			padding-bottom: 5px;
+			padding-bottom: 0;
 		}
-		
+
 		h2 {
 			font-size: 12px;
 			font-weight: 600;
 			color: var(--sidebar-foreground);
 			text-transform: uppercase;
 			letter-spacing: 0.05em;
-			margin: 0 0 12px 0;
-			padding-bottom: 8px;
+			margin: 0 0 10px 0;
+			padding-bottom: 7px;
 			border-bottom: 1px solid var(--sidebar-border);
 			opacity: 0.8;
 		}
 		
 		/* Form Controls */
 		.control-group {
-			margin-bottom: 12px;
+			margin-bottom: 10px;
 			position: relative;
+			min-width: 0;
 		}
 
 		.control-header {
 			display: flex;
 			justify-content: space-between;
 			align-items: center;
-			margin-bottom: 4px;
+			gap: 6px;
+			margin-bottom: 2px;
 		}
-		
+
 		.control-group label {
-			font-size: 13px;
+			font-size: 12px;
 			color: var(--sidebar-foreground);
 			font-weight: 400;
+			white-space: nowrap;
 		}
-		
+
 		.control-desc {
 			font-size: 11px;
 			color: var(--muted-foreground);
-			line-height: 1.4;
+			line-height: 1.3;
 		}
 
 		.control-group input[type="number"] {
-			width: 70px;
-			padding: 4px 8px;
+			width: 62px;
+			flex: 0 0 auto;
+			padding: 3px 6px;
 			border: 1px solid var(--sidebar-border);
 			border-radius: 4px;
 			outline: none;
@@ -148,7 +154,22 @@
 			font-size: 12px;
 			transition: all 0.2s;
 			text-align: right;
-			height: 28px;
+			height: 26px;
+		}
+
+		.params-grid {
+			display: grid;
+			grid-template-columns: repeat(2, minmax(0, 1fr));
+			column-gap: 12px;
+			row-gap: 2px;
+			align-items: start;
+		}
+
+		.run-hint {
+			margin-top: 10px;
+			font-size: 11px;
+			color: var(--muted-foreground);
+			text-align: center;
 		}
 		
 		.control-group input[type="number"]:focus {
@@ -158,8 +179,8 @@
 
 		/* File Input */
 		.file-input-wrapper {
-			margin-bottom: 15px;
-			padding: 20px;
+			margin-bottom: 10px;
+			padding: 12px;
 			border: 1px dashed var(--sidebar-border);
 			border-radius: var(--radius);
 			text-align: center;
@@ -167,6 +188,22 @@
 			background: rgba(255, 255, 255, 0.02);
 			cursor: pointer;
 		}
+
+		.dsn-status {
+			margin-bottom: 10px;
+			padding: 6px 8px;
+			border-radius: 4px;
+			background: var(--input);
+			color: var(--muted-foreground);
+			font-size: 11px;
+			white-space: nowrap;
+			overflow: hidden;
+			text-overflow: ellipsis;
+		}
+
+		.dsn-status.loading { color: var(--primary); }
+		.dsn-status.success { color: var(--success, #4ade80); }
+		.dsn-status.error { color: var(--destructive); }
 
 		.file-input-wrapper:hover {
 			border-color: var(--sidebar-primary);
@@ -182,13 +219,13 @@
 		/* Buttons */
 		.btn-group {
 			display: flex;
-			gap: 10px;
-			margin-top: 16px;
+			gap: 8px;
+			margin-top: 10px;
 		}
-		
+
 		button {
 			flex: 1;
-			padding: 8px 16px;
+			padding: 6px 12px;
 			font-size: 13px;
 			font-weight: 500;
 			cursor: pointer;
@@ -214,27 +251,6 @@
 			opacity: 0.9;
 		}
 		
-		#export_ses {
-			background-color: transparent;
-			border: 1px solid var(--sidebar-border);
-			color: var(--sidebar-foreground);
-		}
-		
-		#export_ses:hover:not(:disabled) {
-			background-color: var(--sidebar-accent);
-			color: var(--sidebar-accent-foreground);
-		}
-
-		#load_dsn_eda {
-			width: 100%;
-			background-color: var(--secondary);
-			color: var(--secondary-foreground);
-		}
-		
-		#load_dsn_eda:hover {
-			opacity: 0.9;
-		}
-		
 		button:disabled {
 			background-color: var(--muted) !important;
 			color: var(--muted-foreground) !important;
@@ -242,119 +258,110 @@
 			border-color: transparent !important;
 		}
 
-		.history-list {
+		/* Sidebar top bar / help */
+		.sidebar-top {
+			flex: 0 0 auto;
 			display: flex;
-			flex-direction: column;
-			gap: 8px;
-			max-height: 260px;
-			overflow-y: auto;
-			padding-right: 4px;
+			align-items: center;
+			justify-content: space-between;
+			padding: 7px 12px;
+			border-bottom: 1px solid var(--sidebar-border);
+			background: var(--sidebar);
 		}
 
-		.history-list::-webkit-scrollbar {
-			width: 4px;
-		}
-		.history-list::-webkit-scrollbar-thumb {
-			background: var(--sidebar-border);
-		}
-
-		.history-item {
-			border: 1px solid var(--sidebar-border);
-			border-radius: 4px;
-			padding: 10px;
-			background: var(--card);
-			display: flex;
-			flex-direction: column;
-			gap: 8px;
-		}
-
-		.history-title {
+		.sidebar-title {
 			font-size: 12px;
 			font-weight: 600;
-			color: var(--foreground);
-			display: flex;
-			justify-content: space-between;
-			gap: 8px;
-		}
-
-		.history-meta {
-			font-size: 11px;
-			color: var(--muted-foreground);
-			display: flex;
-			justify-content: space-between;
-			gap: 8px;
-			font-family: var(--font-mono);
-		}
-
-		.history-actions {
-			display: flex;
-			gap: 6px;
-		}
-
-		.history-actions button {
-			flex: 1;
-			height: 24px;
-			font-size: 11px;
-			font-weight: 500;
-			background-color: transparent;
-			border: 1px solid var(--sidebar-border);
+			letter-spacing: 0.02em;
 			color: var(--sidebar-foreground);
-			padding: 0;
 		}
 
-		.history-actions button:hover:not(:disabled) {
-			background-color: var(--sidebar-accent);
+		.help-btn {
+			flex: 0 0 auto;
+			width: 22px;
+			height: 22px;
+			padding: 0;
+			border-radius: 50%;
+			border: 1px solid var(--sidebar-border);
+			background: transparent;
+			color: var(--sidebar-foreground);
+			font-size: 12px;
+			line-height: 1;
+		}
+
+		.help-btn:hover {
+			background: var(--sidebar-accent);
 			color: var(--sidebar-accent-foreground);
 		}
 
-		.history-empty {
-			font-size: 12px;
-			color: var(--muted-foreground);
-			text-align: center;
-			padding: 20px 0;
-			border: 1px dashed var(--sidebar-border);
-			border-radius: 4px;
-		}
-
-		.history-header {
+		/* About modal */
+		.modal-mask {
+			position: fixed;
+			inset: 0;
+			z-index: 200;
 			display: flex;
-			justify-content: space-between;
 			align-items: center;
-			margin-bottom: 12px;
-			border-bottom: 1px solid var(--sidebar-border);
-			padding-bottom: 8px;
+			justify-content: center;
+			background: rgba(0, 0, 0, 0.55);
 		}
 
-		.history-header h2 {
+		.modal {
+			width: 420px;
+			max-width: calc(100vw - 48px);
+			background: var(--card);
+			color: var(--card-foreground);
+			border: 1px solid var(--border);
+			border-radius: 8px;
+			box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+			overflow: hidden;
+		}
+
+		.modal-header {
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+			padding: 10px 14px;
+			border-bottom: 1px solid var(--border);
+		}
+
+		.modal-header h3 {
 			margin: 0;
+			font-size: 13px;
+			font-weight: 600;
+		}
+
+		.modal-close {
+			flex: 0 0 auto;
+			width: 24px;
+			height: 24px;
 			padding: 0;
 			border: none;
-		}
-
-		.history-clear {
-			flex: 0 0 auto;
-			height: 20px;
-			padding: 0 8px;
-			font-size: 10px;
-			background-color: transparent;
-			color: var(--muted-foreground);
-			border: none;
-		}
-
-		.history-clear:hover:not(:disabled) {
-			color: var(--destructive);
 			background: transparent;
+			color: var(--muted-foreground);
+			font-size: 18px;
+			line-height: 1;
 		}
 
-		/* Footer */
-		.footer {
-			margin-top: auto;
-			color: var(--muted-foreground);
-			font-size: 10px;
-			text-align: center;
-			padding: 12px;
-			border-top: 1px solid var(--sidebar-border);
-			background: var(--sidebar);
+		.modal-close:hover {
+			color: var(--foreground);
+		}
+
+		.modal-body {
+			padding: 14px;
+			font-size: 12px;
+			line-height: 1.6;
+		}
+
+		.modal-body p {
+			margin: 0 0 8px;
+		}
+
+		.modal-body p:last-child {
+			margin-bottom: 0;
+		}
+
+		.modal-body a {
+			color: var(--primary);
 		}
 
 		/* Main Content - Right Side */
@@ -362,41 +369,50 @@
 			flex: 1;
 			padding: 0;
 			display: flex;
-			justify-content: center;
-			align-items: center;
+			flex-direction: column;
 			background-color: #000; /* Keep canvas black for contrast */
 			position: relative;
 			overflow: hidden;
 		}
-		
+
 		#pcb_view {
+			flex: 1 1 auto;
+			min-height: 0;
 			background: #000;
 			width: 100%;
-			height: 100%;
 			display: flex;
 			justify-content: center;
 			align-items: center;
 		}
-		
-		/* Log Overlay */
-		#log-overlay {
-			position: absolute;
-			top: 20px;
-			right: 20px;
-			background: rgba(0, 0, 0, 0.85);
-			padding: 12px;
-			border-radius: 6px;
-			box-shadow: 0 4px 12px rgba(0,0,0,0.5);
-			display: none;
-			z-index: 100;
-			width: 300px;
-			max-height: 300px;
+
+		/* Log panel (bottom of preview area) */
+		#log_panel {
+			flex: 0 0 400px;
+			height: 400px;
+			display: flex;
+			flex-direction: column;
+			background: #0b0b0b;
+			border-top: 1px solid #333;
+			min-height: 0;
+		}
+
+		.log-title {
+			flex: 0 0 auto;
+			padding: 6px 10px;
+			font-size: 11px;
+			color: var(--muted-foreground);
+			border-bottom: 1px solid #222;
+			letter-spacing: 0.04em;
+		}
+
+		#log-content {
+			flex: 1 1 auto;
+			min-height: 0;
 			overflow-y: auto;
+			padding: 8px 10px;
 			color: #4ade80; /* Tailwind green-400 */
 			font-family: var(--font-mono);
 			font-size: 11px;
-			border: 1px solid #333;
-			backdrop-filter: blur(4px);
 		}
 
 		.log-entry {
@@ -438,6 +454,10 @@
 </head>
 <body>
 	<div class="sidebar">
+		<div class="sidebar-top">
+			<span class="sidebar-title">JS-PCB 自动布线</span>
+			<button id="help_btn" class="help-btn" type="button" title="关于">?</button>
+		</div>
 		<div class="sidebar-content">
 			<div class="panel">
 				<h2>导入设置</h2>
@@ -446,125 +466,129 @@
 						<label for="arg_g">边框间隙 (Gap)</label>
 						<input id="arg_g" type="number" min="1" max="5" step="1" value="2"/>
 					</div>
-					<div class="control-desc">PCB 边界与布线区域保留的间距单位</div>
+					<div class="control-desc">PCB 边界与布线区域保留的间距（×0.1mm）</div>
 				</div>
 				
 				<div class="file-input-wrapper" id="file_input_wrapper">
 					<input type="file" id="files" name="files[]" accept=".dsn" single/>
 				</div>
 
-				<div class="btn-group" id="eda_input_group" style="display:none; margin-top: 0;">
-					<button id="load_dsn_eda" type="button">从 EDA 获取 DSN</button>
-				</div>
-				
-				<input type="checkbox" id="jlc_convert" class="hidden-option" checked/>
+				<div class="dsn-status" id="dsn_status">等待载入 DSN…</div>
+
+				<input type="checkbox" id="dsn_normalize" class="hidden-option" checked/>
 				<input id="scale" type="number" class="hidden-option" value="1"/>
 			</div>
 
 			<div class="panel">
 				<h2>布线参数</h2>
 				
-				<div class="control-group">
-					<div class="control-header">
-						<label for="arg_t">超时时间 (Timeout)</label>
-						<input id="arg_t" type="number" min="0" max="10000" step="1" value="600"/>
-					</div>
-					<div class="control-desc">自动布线程序运行的最大时间（秒）</div>
-				</div>
-
 				<input id="arg_v" type="number" class="hidden-option" value="1"/>
 
-				<div class="control-group">
-					<div class="control-header">
-						<label for="arg_z">过孔代价 (Via Cost)</label>
-						<input id="arg_z" type="number" min="0" max="256" step="1" value="16"/>
+				<div class="params-grid">
+					<div class="control-group">
+						<div class="control-header">
+							<label for="arg_t" title="Timeout">超时时间</label>
+							<input id="arg_t" type="number" min="0" max="10000" step="1" value="600"/>
+						</div>
+						<div class="control-desc">最大运行时间（秒）</div>
 					</div>
-					<div class="control-desc">添加过孔的惩罚权重，越高越少用过孔</div>
-				</div>
 
-				<div class="control-group">
-					<div class="control-header">
-						<label for="arg_s">采样次数 (Samples)</label>
-						<input id="arg_s" type="number" min="1" max="32" step="1" value="1"/>
+					<div class="control-group">
+						<div class="control-header">
+							<label for="arg_z" title="Via Cost">过孔代价</label>
+							<input id="arg_z" type="number" min="0" max="256" step="1" value="16"/>
+						</div>
+						<div class="control-desc">越高越少用过孔</div>
 					</div>
-					<div class="control-desc">路径搜索算法的采样迭代次数</div>
-				</div>
 
-				<div class="control-group">
-					<div class="control-header">
-						<label for="arg_r">网格分辨率 (Resolution)</label>
-						<input id="arg_r" type="number" min="1" max="4" step="1" value="1"/>
+					<div class="control-group">
+						<div class="control-header">
+							<label for="arg_s" title="Samples">采样次数</label>
+							<input id="arg_s" type="number" min="1" max="32" step="1" value="1"/>
+						</div>
+						<div class="control-desc">路径搜索迭代次数</div>
 					</div>
-					<div class="control-desc">布线网格的精细度倍率</div>
-				</div>
 
-				<div class="control-group">
-					<div class="control-header">
-						<label for="arg_d">距离度量 (Metric)</label>
-						<input id="arg_d" type="number" min="0" max="4" step="1" value="1"/>
+					<div class="control-group">
+						<div class="control-header">
+							<label for="arg_r" title="Resolution">网格分辨率</label>
+							<input id="arg_r" type="number" min="1" max="4" step="1" value="1"/>
+						</div>
+						<div class="control-desc">网格精细度倍率</div>
 					</div>
-					<div class="control-desc">路径评估算法 (0:欧氏距离, 1:曼哈顿等)</div>
-				</div>
 
-				<div class="control-group">
-					<div class="control-header">
-						<label for="arg_q">量化精度 (Quantization)</label>
-						<input id="arg_q" type="number" min="0" max="64" step="1" value="2"/>
+					<div class="control-group">
+						<div class="control-header">
+							<label for="arg_d" title="Metric">距离度量</label>
+							<input id="arg_d" type="number" min="0" max="4" step="1" value="1"/>
+						</div>
+						<div class="control-desc">0 欧氏 / 1 曼哈顿</div>
 					</div>
-					<div class="control-desc">坐标点吸附网格的精度等级</div>
-				</div>
 
-				<div class="control-group">
-					<div class="control-header">
-						<label for="arg_fr">扩散范围 (Spread)</label>
-						<input id="arg_fr" type="number" min="0" max="5" step="1" value="2"/>
+					<div class="control-group">
+						<div class="control-header">
+							<label for="arg_q" title="Quantization">量化精度</label>
+							<input id="arg_q" type="number" min="0" max="64" step="1" value="2"/>
+						</div>
+						<div class="control-desc">坐标吸附精度</div>
 					</div>
-					<div class="control-desc">搜索算法向外扩散的范围系数</div>
-				</div>
 
-				<div class="control-group">
-					<div class="control-header">
-						<label for="arg_xr">X 范围 (X-Range)</label>
-						<input id="arg_xr" type="number" min="0" max="5" step="1" value="1"/>
+					<div class="control-group">
+						<div class="control-header">
+							<label for="arg_fr" title="Spread">扩散范围</label>
+							<input id="arg_fr" type="number" min="0" max="5" step="1" value="2"/>
+						</div>
+						<div class="control-desc">向外扩散系数</div>
 					</div>
-					<div class="control-desc">水平方向的搜索/限制范围</div>
-				</div>
 
-				<div class="control-group">
-					<div class="control-header">
-						<label for="arg_yr">Y 范围 (Y-Range)</label>
-						<input id="arg_yr" type="number" min="0" max="5" step="1" value="1"/>
+					<div class="control-group">
+						<div class="control-header">
+							<label for="arg_xr" title="X-Range">X 范围</label>
+							<input id="arg_xr" type="number" min="0" max="5" step="1" value="1"/>
+						</div>
+						<div class="control-desc">水平搜索范围</div>
 					</div>
-					<div class="control-desc">垂直方向的搜索/限制范围</div>
+
+					<div class="control-group">
+						<div class="control-header">
+							<label for="arg_yr" title="Y-Range">Y 范围</label>
+							<input id="arg_yr" type="number" min="0" max="5" step="1" value="1"/>
+						</div>
+						<div class="control-desc">垂直搜索范围</div>
+					</div>
 				</div>
 
 				<div class="btn-group">
 					<button id="go" type="button">开始布线</button>
-					<button id="export_ses" type="button" disabled>导出 SES</button>
 				</div>
+				<div class="run-hint">布线完成后会自动导入当前 PCB</div>
 			</div>
 
-			<div class="panel">
-				<div class="history-header">
-					<h2>历史记录</h2>
-					<button id="clear_history" class="history-clear" type="button">清空</button>
-				</div>
-				<div id="history_empty" class="history-empty">暂无历史记录</div>
-				<div id="history_list" class="history-list"></div>
-			</div>
-		</div>
-		<div class="footer">
-			JS-PCB Autorouter v1.5 | Based on github.com/vygr/JS-PCB
 		</div>
 	</div>
 
 	<div class="content">
-		<div id="timer-display">00:00</div>
-		<div id="log-overlay">
-			<div id="log-content"></div>
-		</div>
 		<div id="pcb_view">
 			<!-- SVG 将被渲染在这里 -->
+		</div>
+		<div id="timer-display">00:00</div>
+		<div id="log_panel">
+			<div class="log-title">布线日志</div>
+			<div id="log-content"></div>
+		</div>
+	</div>
+
+	<div id="help_modal" class="modal-mask" style="display: none;">
+		<div class="modal">
+			<div class="modal-header">
+				<h3>关于 JS-PCB 自动布线</h3>
+				<button id="help_close" class="modal-close" type="button" title="关闭">×</button>
+			</div>
+			<div class="modal-body">
+				<p>JS-PCB Autorouter v1.6.0 | Based on <a href="https://github.com/vygr/JS-PCB" target="_blank" rel="noopener">github.com/vygr/JS-PCB</a></p>
+				<p>将当前 PCB 导出为 DSN，调用 JS-PCB 布线引擎，在右侧实时预览布线结果，布线完成后自动导入 PCB。</p>
+				<p>打开窗口时会自动从 EDA 获取并载入当前 PCB 的 DSN。</p>
+			</div>
 		</div>
 	</div>
 
