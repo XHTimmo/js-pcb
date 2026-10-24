@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 	<meta charset="utf-8">
-	<title data-i18n="ui.windowTitle">JS-PCB 自动布线器 v1.6.0</title>
+	<title data-i18n="ui.dialogTitle">JS-PCB 自动布线</title>
 	<script type="text/javascript" src="/iframe/jspcb/d3.v4.min.js"></script>
 	<script type="text/javascript" src="/iframe/jspcb/mymath.js"></script>
 	<script type="text/javascript" src="/iframe/jspcb/view.js"></script>
@@ -499,39 +499,6 @@
 			align-items: center;
 		}
 
-		.pcb-legend {
-			position: absolute;
-			top: 12px;
-			left: 12px;
-			z-index: 5;
-			display: flex;
-			gap: 12px;
-			padding: 6px 10px;
-			border-radius: 6px;
-			background: rgba(10, 16, 24, 0.75);
-			border: 1px solid #223247;
-			font-size: 11px;
-			color: #b9c8da;
-			pointer-events: none;
-		}
-
-		.pcb-legend span {
-			display: flex;
-			align-items: center;
-			gap: 5px;
-		}
-
-		.pcb-legend .dot {
-			width: 8px;
-			height: 8px;
-			border-radius: 50%;
-			display: inline-block;
-		}
-
-		.pcb-legend .top { background: #f87171; }
-		.pcb-legend .bottom { background: #4ade80; }
-		.pcb-legend .thru { background: #e5e7eb; }
-
 		/* Log panel (bottom of preview area) */
 		#log_panel {
 			flex: 0 0 20%;
@@ -767,11 +734,6 @@
 	<div class="content">
 		<div id="pcb_view">
 			<!-- SVG 将被渲染在这里 -->
-		</div>
-		<div class="pcb-legend">
-			<span><i class="dot top"></i><span data-i18n="ui.legendTop">顶层焊盘</span></span>
-			<span><i class="dot bottom"></i><span data-i18n="ui.legendBottom">底层焊盘</span></span>
-			<span><i class="dot thru"></i><span data-i18n="ui.legendThru">通孔焊盘</span></span>
 		</div>
 		<div id="log_panel">
 			<div class="log-title">

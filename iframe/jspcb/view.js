@@ -62,15 +62,15 @@ var js_pcb = js_pcb || {};
 
 		//create layers, last layer is the terminals layer
 		let layers = [];
-		let layer_colors = ["red", "green", "blue", "yellow", "cyan", "magenta"];
+		let layer_colors = ["#ff9a9a", "#8ec5ff", "#facc15", "#c7ccd4", "#f472b6", "#a78bfa"];
 		for (let layer = 0; layer < depth; ++layer)
 		{
 			layers.push(pcb.append("g")
 				.attr("stroke", layer_colors[layer % layer_colors.length])
-				.attr("stroke-opacity", 0.75));
+				.attr("stroke-opacity", 0.9));
 		}
 		layers.push(pcb.append("g")
-			.attr("stroke", "white"));
+			.attr("stroke", "#c7ccd4"));
 
 		//add tracks
 		for (let track of pcb_data[1])
@@ -113,11 +113,11 @@ var js_pcb = js_pcb || {};
 				[terminal_radius, terminal_gap, [terminal_x, terminal_y, terminal_z],  terminal_shape] = terminal;
 				// 按焊盘层着色：顶层红色、底层绿色、通孔（多层）白色
 				let terminal_layers = terminal[4] || [];
-				let terminal_color = "#e5e7eb";
+				let terminal_color = "#c7ccd4";
 				if (terminal_layers.length === 1)
 				{
-					if (terminal_layers[0] === 0) terminal_color = "#f87171";
-					else if (terminal_layers[0] === 1) terminal_color = "#4ade80";
+					if (terminal_layers[0] === 0) terminal_color = "#ff9a9a";
+					else if (terminal_layers[0] === 1) terminal_color = "#8ec5ff";
 				}
 				if (!terminal_shape.length)
 				{
@@ -154,7 +154,7 @@ var js_pcb = js_pcb || {};
 							.attr("cx", path[node][0])
 							.attr("cy", path[node][1])
 							.attr("r", via_radius)
-							.attr("fill", "white");
+							.attr("fill", "#c7ccd4");
 					}
 					terminal_z = path[node][2];
 				}

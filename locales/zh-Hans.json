@@ -75,5 +75,6 @@
 	"ui.errReadDsn": "无法读取 EDA 返回的 DSN",
 	"ui.errEmptyDsn": "DSN 内容为空",
 	"ui.errNormalize": "DSN 归一化失败",
-	"ui.errUnknown": "未知错误"
+	"ui.errUnknown": "未知错误",
+	"ui.dialogTitle": "JS-PCB 自动布线"
 }

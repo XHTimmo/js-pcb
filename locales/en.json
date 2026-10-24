@@ -75,5 +75,6 @@
 	"ui.errReadDsn": "Cannot read the DSN returned by the EDA",
 	"ui.errEmptyDsn": "DSN content is empty",
 	"ui.errNormalize": "DSN normalization failed",
-	"ui.errUnknown": "Unknown error"
+	"ui.errUnknown": "Unknown error",
+	"ui.dialogTitle": "JS-PCB Autorouter"
 }

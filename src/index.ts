@@ -24,9 +24,11 @@ export function about(): void {
 
 export async function startAutoRouteIFrame(): Promise<void> {
 	console.log('[autorouter][iframe] open');
+	const title = eda.sys_I18n.text('ui.dialogTitle');
 	await eda.sys_IFrame.openIFrame('/iframe/jspcb/index.html', 1100, 700, 'jspcb-autorouter', {
 		maximizeButton: true,
 		minimizeButton: true,
+		title: title,
 	});
 }
 

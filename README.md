@@ -8,7 +8,7 @@
 
 - **自动载入 DSN**：打开窗口即获取当前 PCB 的 DSN 并显示预览。
 - **动态布线预览**：布线过程中实时更新焊盘和走线。
-- **焊盘分层显示**：顶层焊盘红色、底层焊盘绿色、通孔焊盘白色，并带图例。
+- **焊盘分层显示**：顶层焊盘淡红色、底层焊盘淡蓝色、通孔焊盘淡灰色；走线与同层焊盘同色。
 - **板框显示与约束**：绘制真实 DSN 板框（含凹槽），并作为布线障碍。
 - **开始 / 停止**：布线中按钮变为“停止布线”，可随时终止并再次开始。
 - **自动导入 SES**：布线完成后直接导入当前 PCB，无需手动操作。
@@ -100,13 +100,13 @@ npm run build
 An automatic PCB routing extension for **EasyEDA Pro (嘉立创EDA专业版)**, powered by the
 open-source [JS-PCB](https://github.com/vygr/JS-PCB) engine.
 
-![JsPCB Autorouter UI](images/dialog.jpg)
+![JsPCB Autorouter UI](images/dialog-en.jpg)
 
 ## Features
 
 - **Automatic DSN loading** — the dialog fetches and previews the current PCB's DSN as soon as it opens.
 - **Live routing preview** — pads and traces update while the router is working.
-- **Layer-aware preview** — top-layer pads are red, bottom-layer pads are green, through-hole pads are white.
+- **Layer-aware preview** — top-layer pads and traces are light red, bottom-layer pads and traces are light blue, through-hole pads are light gray.
 - **Board outline** — the real DSN board outline (including cut-outs) is drawn and used as a routing constraint.
 - **Start / stop** — the button switches to **Stop** while routing; you can stop and start again at any time.
 - **Automatic SES import** — the routing result is imported into the current PCB immediately after routing finishes.
