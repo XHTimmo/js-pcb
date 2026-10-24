@@ -19,7 +19,7 @@ function convertPcbToSes(pcbData, dsnInfo, options = {}) {
     const [dims, tracks] = pcbData;
     const [width, height, depth] = dims;
     
-    const isJlcConverted = dsnInfo.isJlcConverted || false;
+    const isDsnNormalized = dsnInfo.isDsnNormalized || false;
     const gap = options.gap || 1;
     const origMinx = dsnInfo.minx || 0;
     const origMiny = dsnInfo.miny || 0;
@@ -29,12 +29,12 @@ function convertPcbToSes(pcbData, dsnInfo, options = {}) {
         resolution: 1000,
         unit: 'mil',
         fileName: options.fileName || dsnInfo.fileName || 'PCB',
-        viaSize: options.viaSize || 24,
+        viaSize: options.viaSize || dsnInfo.viaSize || 24,
         ...options
     };
     
     let scale, offsetX, offsetY;
-    if (isJlcConverted) {
+    if (isDsnNormalized) {
         scale = 1000 / 254 * 1000;
         offsetX = origMinx * 1000 - gap * scale;
         offsetY = origMaxy * 1000 + gap * scale;
@@ -465,10 +465,45 @@ function extractDsnDetails(tree) {
         }
     }
 
+    // 1b. 找出结构里声明的过孔 padstack 名称，后续从 library 里取它的实际尺寸，
+    // 保证 SES 里的过孔大小与设计一致（而不是永远写 24 mil）。
+    let viaName = null;
+    if (structure.length) {
+        const viaNode = searchTree(structure, 'via');
+        if (viaNode.length) {
+            for (let i = 1; i < viaNode.length; i++) {
+                if (typeof viaNode[i] === 'string') {
+                    viaName = viaNode[i].replace(/^"|"$/g, '');
+                }
+            }
+        }
+    }
+
     // 2. Library & Placement -> Pin Positions
     const library = searchTree(tree, 'library');
-    const componentMap = new Map(); 
-    
+    const componentMap = new Map();
+    let viaSize = null;
+
+    if (library.length) {
+        for (let i = 1; i < library.length; i++) {
+            const node = library[i];
+            if (!Array.isArray(node) || node[0] !== 'padstack') continue;
+            const padName = typeof node[1] === 'string' ? node[1].replace(/^"|"$/g, '') : null;
+            if (!viaName || padName !== viaName) continue;
+            // (padstack via0 (shape (circle layer size)))
+            for (let j = 2; j < node.length; j++) {
+                const shape = node[j];
+                if (!Array.isArray(shape) || shape[0] !== 'shape') continue;
+                const prim = shape[1];
+                if (Array.isArray(prim) && prim[0] === 'circle') {
+                    const size = parseFloat(prim[2]);
+                    if (!isNaN(size) && size > 0) { viaSize = size; break; }
+                }
+            }
+            if (viaSize) break;
+        }
+    }
+
     if (library.length) {
         for (let i = 1; i < library.length; i++) {
             const node = library[i];
@@ -579,7 +614,9 @@ function extractDsnDetails(tree) {
         minx, miny, maxy,
         netNames,
         pinPositions,
-        netPins
+        netPins,
+        viaName,
+        viaSize
     };
 }
 
@@ -593,7 +630,9 @@ function parseDsnInfo(dsnContent) {
         netPins: new Map(),
         minx: 0,
         miny: 0,
-        maxy: 0
+        maxy: 0,
+        viaName: null,
+        viaSize: 24
     };
     
     const fileMatch = dsnContent.match(/\((?:pcb|PCB)\s+"([^"]+)"/);
@@ -619,7 +658,9 @@ function parseDsnInfo(dsnContent) {
         info.netNames = details.netNames;
         info.pinPositions = details.pinPositions;
         info.netPins = details.netPins;
-        
+        info.viaName = details.viaName || info.viaName;
+        info.viaSize = details.viaSize || info.viaSize;
+
         console.log('Parsed DSN:', {
             nets: info.netNames.length,
             pins: info.pinPositions.size,

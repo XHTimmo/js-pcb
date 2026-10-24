@@ -9,9 +9,10 @@
 var js_pcb = js_pcb || {};
 (function()
 {
-	function dsn2pcb(dsn, gap)
+	function dsn2pcb(dsn, gap, extra_gap)
 	{
 		let EOF = -1;
+		extra_gap = extra_gap || 0;
 		let stream = [dsn, 0];
 
 		//peek next char from stream
@@ -57,7 +58,7 @@ var js_pcb = js_pcb || {};
 			for (;;)
 			{
 				let b = peek(stream);
-				if (b === '\t' || b === '\n' || b === '\r' || b === ' ' || b === ')') break;
+				if (b === '\t' || b === '\n' || b === '\r' || b === ' ' || b === ')' || b === '(') break;
 				s += get(stream);
 			}
 			return s;
@@ -69,7 +70,9 @@ var js_pcb = js_pcb || {};
 			for (;;)
 			{
 				let b = peek(stream);
-				if (b === '\t' || b === '\n' || b === '\r' || b === ' ' || b === ')') break;
+				// '(' 也作为分隔符：EasyEDA 导出的 DSN 会出现 `(rule(clear 6.05))`
+				// 这类节点名与子节点之间没有空格的写法，若不在此处断开会把整个树解析错位。
+				if (b === '\t' || b === '\n' || b === '\r' || b === ' ' || b === ')' || b === '(') break;
 				s += get(stream);
 			}
 			return [s, []];
@@ -81,7 +84,7 @@ var js_pcb = js_pcb || {};
 			for (;;)
 			{
 				let b = peek(stream);
-				if (b === '"') break;
+				if (b === '"' || b === EOF) break;
 				s += get(stream);
 			}
 			return [s, []];
@@ -175,6 +178,8 @@ var js_pcb = js_pcb || {};
 		let structure_root = search_tree(tree, "structure");
 		const units = 1000.0;
 		let num_layers = 0;
+		let layer_index = new Map();
+		let boundary_points = [];
 		let minx = 1000000.0;
 		let miny = 1000000.0;
 		let maxx = -1000000.0;
@@ -183,7 +188,11 @@ var js_pcb = js_pcb || {};
 		let default_via = "Via[0-1]_600:400_um";
 		for (let structure_node of structure_root[1])
 		{
-			if (structure_node[0] === "layer") num_layers++;
+			if (structure_node[0] === "layer")
+			{
+				layer_index.set(structure_node[1][0][0], num_layers);
+				num_layers++;
+			}
 			else if (structure_node[0] === "via")
 			{
 				for (let via_node of structure_node[1])
@@ -203,7 +212,7 @@ var js_pcb = js_pcb || {};
 							|| rule_node[0] === "clearance")
 							&& rule_node[1].length == 1)
 					{
-						default_rule[1] = parseFloat(rule_node[1][0]) / (2 * units);
+						default_rule[1] = parseFloat(rule_node[1][0]) / units;
 					}
 				}
 			}
@@ -217,6 +226,7 @@ var js_pcb = js_pcb || {};
 						{
 							let px = parseFloat(boundary_node[1][cords][0]) / units;
 							let py = parseFloat(boundary_node[1][cords+1][0]) / -units;
+							boundary_points.push([px, py]);
 							minx = Math.min(px, minx);
 							maxx = Math.max(px, maxx);
 							miny = Math.min(py, miny);
@@ -229,6 +239,7 @@ var js_pcb = js_pcb || {};
 						let y1 = parseFloat(boundary_node[1][2]) / -units;
 						let x2 = parseFloat(boundary_node[1][3]) / units;
 						let y2 = parseFloat(boundary_node[1][4]) / -units;
+						boundary_points.push([x1, y1], [x2, y1], [x2, y2], [x1, y2]);
 						minx = Math.min(x1, minx);
 						maxx = Math.max(x1, maxx);
 						miny = Math.min(y1, miny);
@@ -284,13 +295,26 @@ var js_pcb = js_pcb || {};
 			}
 			else if (library_node[0] === "padstack")
 			{
+				let padstack_name = library_node[1][0][0];
+				let pad_rule = null;
+				let pad_layers = [];
 				for (let i = 1; i < library_node[1].length; ++i)
 				{
 					let padstack_node = library_node[1][i];
 					if (padstack_node[0] === "shape")
 					{
+						// 记录 padstack 出现在哪些层（0-based）。
+						// SMD 焊盘只在单层，通孔焊盘在多层；布线时必须据此决定
+						// 走线能否从该焊盘出发，否则会出现在另一层走线但没有过孔的情况。
+						let layer_name = padstack_node[1][0][1] ? padstack_node[1][0][1][0][0] : null;
+						let layer_num = layer_index.get(layer_name);
+						if (layer_num !== undefined && pad_layers.indexOf(layer_num) === -1)
+						{
+							pad_layers.push(layer_num);
+						}
+
 						let points = [];
-						let the_rule = default_rule.slice();
+						let the_rule = pad_rule || default_rule.slice();
 						if (padstack_node[1][0][0] === "circle")
 						{
 							the_rule[0] = parseFloat(padstack_node[1][0][1][1][0]) / (2 * units);
@@ -340,8 +364,13 @@ var js_pcb = js_pcb || {};
 							points.push(points[0]);
 						}
 						the_rule[2] = points;
-						rule_map.set(library_node[1][0][0], the_rule);
+						pad_rule = the_rule;
 					}
+				}
+				if (pad_rule)
+				{
+					pad_rule[3] = pad_layers;
+					rule_map.set(padstack_name, pad_rule);
 				}
 			}
 		}
@@ -376,6 +405,7 @@ var js_pcb = js_pcb || {};
 		for (let value of instance_map.values())
 		{
 			let component = component_map.get(value[1]);
+			if (component === undefined) continue;
 			for (let pin of component[1].values())
 			{
 				let m_x = pin[2];
@@ -386,9 +416,10 @@ var js_pcb = js_pcb || {};
 				let px = (c * m_x - s * m_y) + value[3];
 				let py = (s * m_x + c * m_y) + value[4];
 				let pin_rule = rule_map.get(pin[1]);
+				if (pin_rule === undefined) pin_rule = default_rule;
 				let tp = [px, py, 0.0];
 				let cords = shape_to_cords(pin_rule[2], pin[4], value[5]);
-				all_terminals.push([pin_rule[0], pin_rule[1], tp, cords]);
+				all_terminals.push([pin_rule[0], pin_rule[1] + extra_gap, tp, cords, pin_rule[3] || []]);
 				minx = Math.min(px, minx);
 				maxx = Math.max(px, maxx);
 				miny = Math.min(py, miny);
@@ -415,7 +446,7 @@ var js_pcb = js_pcb || {};
 							}
 							if (dims[0] === "clearance")
 							{
-								the_circuit[1][1] = parseFloat(dims[1][0][0]) / (2 * units);
+								the_circuit[1][1] = parseFloat(dims[1][0][0]) / units;
 							}
 						}
 					}
@@ -453,8 +484,11 @@ var js_pcb = js_pcb || {};
 							let instance_name = pin_info[0];
 							let pin_name = pin_info[1];
 							let instance = instance_map.get(instance_name);
+							if (instance === undefined) continue;
 							let component = component_map.get(instance[1]);
+							if (component === undefined) continue;
 							let pin = component[1].get(pin_name);
+							if (pin === undefined) continue;
 							let m_x = pin[2];
 							let m_y = pin[3];
 							if (instance[2] !== "front") m_x = -m_x;
@@ -465,15 +499,19 @@ var js_pcb = js_pcb || {};
 							let pin_rule = rule_map.get(pin[1]);
 							let tp = [px, py, 0.0];
 							let cords = shape_to_cords(pin_rule[2], pin[4], instance[5]);
-							let term = [pin_rule[0], pin_rule[1], tp, cords];
+							let term = [pin_rule[0], pin_rule[1] + extra_gap, tp, cords, pin_rule[3] || []];
 							the_terminals.push(term);
 							let index = term_index(all_terminals, term);
 							if (index !== -1) all_terminals.splice(index, 1);
 						}
 						let circuit = circuit_map.get(network_node[1][0][0]);
+						// 某些 DSN 不写 class（或 class 名与 net 名不一致），
+						// 直接取 circuit[1] 会抛异常导致整个布线线程静默退出。
+						if (circuit === undefined) circuit = [default_via, default_rule.slice()];
 						let net_rule = circuit[1];
 						let via_rule = rule_map.get(circuit[0]);
-						the_tracks.push([net_rule[0], via_rule[0], net_rule[1], the_terminals, []]);
+						if (via_rule === undefined) via_rule = default_rule;
+						the_tracks.push([net_rule[0], via_rule[0], net_rule[1] + extra_gap, the_terminals, []]);
 					}
 				}
 			}
@@ -489,10 +527,18 @@ var js_pcb = js_pcb || {};
 				terminal[2][1] -= (miny - gap);
 			}
 		}
+		// 板框与焊盘使用同一个坐标原点，供预览绘制外框
+		for (let p of boundary_points)
+		{
+			p[0] -= (minx - gap);
+			p[1] -= (miny - gap);
+		}
 		return [[Math.trunc(maxx - minx + (gap * 2) + 0.5),
 			 	Math.trunc(maxy - miny + (gap * 2) + 0.5),
 				num_layers],
-				the_tracks];
+				the_tracks,
+				boundary_points,
+				default_rule[1] + extra_gap]; // 板框到铜皮的间距
 	}
 
 	js_pcb.dsn2pcb = dsn2pcb;

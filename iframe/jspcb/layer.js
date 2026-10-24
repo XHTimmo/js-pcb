@@ -38,7 +38,9 @@ var js_pcb = js_pcb || {};
 			this.m_id = id;
 			this.m_line = l;
 			let pv = js_pcb.perp_2d(js_pcb.sub_2d(l.m_p2, l.m_p1));
-			this.m_lv_norm = js_pcb.scale_2d(pv, 1.0 / js_pcb.length_2d(pv));
+			let pv_len = js_pcb.length_2d(pv);
+			// 单层焊盘/过孔会生成零长度线段，此时法向量取 [0,0]，避免 NaN。
+			this.m_lv_norm = pv_len > 0 ? js_pcb.scale_2d(pv, 1.0 / pv_len) : [0.0, 0.0];
 			this.m_lv_dist = js_pcb.dot_2d(this.m_lv_norm, l.m_p1);
 		}
 

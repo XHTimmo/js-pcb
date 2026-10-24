@@ -1,3 +1,6 @@
 {
-	"About...": "About..."
+	"About...": "About...",
+	"JsPCB自动布线": "JsPCB Autorouter",
+	"基于 JS-PCB 的自动布线器": "JS-PCB based PCB autorouter",
+	"JsPCB自动布线...": "JsPCB Autorouter..."
 }

@@ -3,7 +3,7 @@
 var js_pcb = js_pcb || {};
 (function()
 {
-	function view_pcb(pcb_data, scale, margin)
+	function view_pcb(pcb_data, scale, margin, boundary)
 	{
 		//Width and height etc
 		let width, height, depth;
@@ -111,17 +111,26 @@ var js_pcb = js_pcb || {};
 			{
 				let terminal_radius, terminal_gap, terminal_x, terminal_y, terminal_z, terminal_shape;
 				[terminal_radius, terminal_gap, [terminal_x, terminal_y, terminal_z],  terminal_shape] = terminal;
+				// 按焊盘层着色：顶层红色、底层绿色、通孔（多层）白色
+				let terminal_layers = terminal[4] || [];
+				let terminal_color = "#e5e7eb";
+				if (terminal_layers.length === 1)
+				{
+					if (terminal_layers[0] === 0) terminal_color = "#f87171";
+					else if (terminal_layers[0] === 1) terminal_color = "#4ade80";
+				}
 				if (!terminal_shape.length)
 				{
 					layers[layers.length-1].append("circle")
 						.attr("cx", terminal_x)
 						.attr("cy", terminal_y)
 						.attr("r", terminal_radius)
-						.attr("fill", "white");
+						.attr("fill", terminal_color);
 				}
 				else if (terminal_shape.length === 2)
 				{
 					layers[layers.length-1].append("path")
+						.attr("stroke", terminal_color)
 						.attr("stroke-width", terminal_radius * 2)
 						.attr("d", path_func(terminal_shape.map(
 							function(e){ return [e[0] + terminal_x, e[1] + terminal_y]; })));
@@ -129,7 +138,7 @@ var js_pcb = js_pcb || {};
 				else
 				{
 					layers[layers.length-1].append("path")
-						.attr("fill", "white")
+						.attr("fill", terminal_color)
 						.attr("d", path_func(terminal_shape.map(
 							function(e){ return [e[0] + terminal_x, e[1] + terminal_y]; })));
 				}
@@ -150,6 +159,19 @@ var js_pcb = js_pcb || {};
 					terminal_z = path[node][2];
 				}
 			}
+		}
+
+		//draw board outline (板框)
+		if (boundary && boundary.length > 1)
+		{
+			let outline = boundary.concat([boundary[0]]);
+			pcb.append("path")
+				.attr("d", path_func(outline) + "Z")
+				.attr("stroke", "#facc15")
+				.attr("stroke-width", 1.2 / scale)
+				.attr("stroke-opacity", 0.9)
+				.attr("stroke-linejoin", "round")
+				.attr("fill", "none");
 		}
 	}
 
