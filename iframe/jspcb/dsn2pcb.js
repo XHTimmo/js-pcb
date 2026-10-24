@@ -9,9 +9,10 @@
 var js_pcb = js_pcb || {};
 (function()
 {
-	function dsn2pcb(dsn, gap)
+	function dsn2pcb(dsn, gap, extra_gap)
 	{
 		let EOF = -1;
+		extra_gap = extra_gap || 0;
 		let stream = [dsn, 0];
 
 		//peek next char from stream
@@ -211,7 +212,7 @@ var js_pcb = js_pcb || {};
 							|| rule_node[0] === "clearance")
 							&& rule_node[1].length == 1)
 					{
-						default_rule[1] = parseFloat(rule_node[1][0]) / (2 * units);
+						default_rule[1] = parseFloat(rule_node[1][0]) / units;
 					}
 				}
 			}
@@ -418,7 +419,7 @@ var js_pcb = js_pcb || {};
 				if (pin_rule === undefined) pin_rule = default_rule;
 				let tp = [px, py, 0.0];
 				let cords = shape_to_cords(pin_rule[2], pin[4], value[5]);
-				all_terminals.push([pin_rule[0], pin_rule[1], tp, cords, pin_rule[3] || []]);
+				all_terminals.push([pin_rule[0], pin_rule[1] + extra_gap, tp, cords, pin_rule[3] || []]);
 				minx = Math.min(px, minx);
 				maxx = Math.max(px, maxx);
 				miny = Math.min(py, miny);
@@ -445,7 +446,7 @@ var js_pcb = js_pcb || {};
 							}
 							if (dims[0] === "clearance")
 							{
-								the_circuit[1][1] = parseFloat(dims[1][0][0]) / (2 * units);
+								the_circuit[1][1] = parseFloat(dims[1][0][0]) / units;
 							}
 						}
 					}
@@ -498,7 +499,7 @@ var js_pcb = js_pcb || {};
 							let pin_rule = rule_map.get(pin[1]);
 							let tp = [px, py, 0.0];
 							let cords = shape_to_cords(pin_rule[2], pin[4], instance[5]);
-							let term = [pin_rule[0], pin_rule[1], tp, cords, pin_rule[3] || []];
+							let term = [pin_rule[0], pin_rule[1] + extra_gap, tp, cords, pin_rule[3] || []];
 							the_terminals.push(term);
 							let index = term_index(all_terminals, term);
 							if (index !== -1) all_terminals.splice(index, 1);
@@ -510,7 +511,7 @@ var js_pcb = js_pcb || {};
 						let net_rule = circuit[1];
 						let via_rule = rule_map.get(circuit[0]);
 						if (via_rule === undefined) via_rule = default_rule;
-						the_tracks.push([net_rule[0], via_rule[0], net_rule[1], the_terminals, []]);
+						the_tracks.push([net_rule[0], via_rule[0], net_rule[1] + extra_gap, the_terminals, []]);
 					}
 				}
 			}
@@ -536,7 +537,8 @@ var js_pcb = js_pcb || {};
 			 	Math.trunc(maxy - miny + (gap * 2) + 0.5),
 				num_layers],
 				the_tracks,
-				boundary_points];
+				boundary_points,
+				default_rule[1] + extra_gap]; // 板框到铜皮的间距
 	}
 
 	js_pcb.dsn2pcb = dsn2pcb;

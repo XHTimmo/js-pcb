@@ -51,6 +51,16 @@ function pcb_thread(paramater_array)
 	let current_pcb = new js_pcb.Pcb(pcb_data[0], routing_flood_vectorss, routing_path_vectorss,
 					dfuncs[arg_d], arg_r, arg_v, arg_q, arg_z);
 	for (let track of pcb_data[1]) current_pcb.add_track(track);
+	// 板框作为墙壁，避免走线/过孔贴边或越界（DRC 板边间距）
+	if (pcb_data[2] && pcb_data[2].length) current_pcb.add_wall(pcb_data[2], pcb_data[3] || 0);
+
+	const total_connected = current_pcb.connected_nets();
+	postMessage({type: 'progress', done: 0, total: total_connected});
+	postMessage({
+		type: 'log',
+		key: 'log.routingStart',
+		args: [total_connected, arg_s, arg_t]
+	});
 
 	//run number of samples of solution and pick best one
 	let best_pcb = current_pcb.output_pcb();
@@ -60,8 +70,9 @@ function pcb_thread(paramater_array)
 	{
 		// 发送日志消息
 		postMessage({
-			type: 'log', 
-			message: `[采样 ${i+1}/${arg_s}] 开始布线...`
+			type: 'log',
+			key: 'log.sampleStart',
+			args: [i + 1, arg_s]
 		});
 
 		let startTime = Date.now();
@@ -78,14 +89,16 @@ function pcb_thread(paramater_array)
 				}
 				postMessage({
 					type: 'log',
-					message: `[采样 ${i+1}/${arg_s}] 超时（${arg_t}s），已保留当前最佳结果`
+					key: 'log.timeout',
+					args: [i + 1, arg_s, arg_t]
 				});
 				break;
 			}
 			current_pcb.increase_quantization();
 			postMessage({
 				type: 'log',
-				message: `[采样 ${i+1}/${arg_s}] 布线失败，增加量化精度重试`
+				key: 'log.sampleFail',
+				args: [i + 1, arg_s]
 			});
 			continue;
 		}
@@ -94,9 +107,12 @@ function pcb_thread(paramater_array)
 		let duration = (endTime - startTime) / 1000;
 		let cost = current_pcb.cost();
 		
+		const sample_total = current_pcb.connected_nets();
+		const sample_unrouted = current_pcb.unrouted_nets();
 		postMessage({
-			type: 'log', 
-			message: `[采样 ${i+1}/${arg_s}] 完成! 耗时: ${duration.toFixed(2)}s, 代价: ${cost}`
+			type: 'log',
+			key: 'log.sampleDone',
+			args: [i + 1, arg_s, duration.toFixed(2), sample_total - sample_unrouted, sample_total, cost]
 		});
 
 		if (cost <= best_cost)
@@ -105,7 +121,8 @@ function pcb_thread(paramater_array)
 			best_pcb = current_pcb.output_pcb();
 			postMessage({
 				type: 'log', 
-				message: `>>> 发现更优解 (代价: ${cost})`
+				key: 'log.better',
+				args: [cost]
 			});
 			// Send intermediate best result for visualization
 			postMessage(best_pcb);
@@ -114,9 +131,11 @@ function pcb_thread(paramater_array)
 	
 	const total_nets = current_pcb.connected_nets();
 	const unrouted = current_pcb.unrouted_nets();
+	postMessage({type: 'progress', done: total_nets - unrouted, total: total_nets});
 	postMessage({
 		type: 'log',
-		message: `所有采样完成。网络 ${total_nets - unrouted}/${total_nets} 已布通，未布通 ${unrouted} 个。`
+		key: 'log.allDone',
+		args: [total_nets - unrouted, total_nets, unrouted]
 	});
 	postMessage({type: 'done', data: best_pcb, cost: best_cost, unrouted: unrouted, total: total_nets});
 }

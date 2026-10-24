@@ -123,6 +123,23 @@ var js_pcb = js_pcb || {};
 			this.m_netlist.push(new Net(track_radius, via_radius, track_gap, terminals, this));
 		}
 
+		//add board outline as walls on every layer, so traces/vias keep
+		//clearance from the board edge (points are in board space)
+		add_wall(points, gap)
+		{
+			if (!points || points.length < 2) return;
+			for (let i = 0; i < points.length; ++i)
+			{
+				let a = points[i];
+				let b = points[(i + 1) % points.length];
+				if (a[0] === b[0] && a[1] === b[1]) continue;
+				for (let z = 0; z < this.m_depth; ++z)
+				{
+					this.m_layers.add_line([a[0], a[1], z], [b[0], b[1], z], 0.0, gap);
+				}
+			}
+		}
+
 		//remove netlist from board
 		remove_netlist()
 		{
@@ -167,7 +184,8 @@ var js_pcb = js_pcb || {};
 					// 放弃该网络，保留其它已布通的网络
 					postMessage({
 						type: 'log',
-						message: `网络 ${index + 1}/${this.m_netlist.length} 重试 ${max_attempts} 次仍无法布线，已跳过`
+						key: 'log.netSkip',
+						args: [index + 1, this.m_netlist.length, max_attempts]
 					});
 					index++;
 					continue;
@@ -175,8 +193,14 @@ var js_pcb = js_pcb || {};
 				if (current_net.route()) index++;
 				else
 				{
-					attempts.set(current_net, (attempts.get(current_net) || 0) + 1);
+					const tries = (attempts.get(current_net) || 0) + 1;
+					attempts.set(current_net, tries);
 					if (this.m_timedout) break;
+					postMessage({
+						type: 'log',
+						key: 'log.netRetry',
+						args: [index + 1, this.m_netlist.length, current_net.m_terminals.length, tries]
+					});
 					if (index === 0)
 					{
 						this.reset_areas();
@@ -212,15 +236,22 @@ var js_pcb = js_pcb || {};
 	//			let end_time = std::chrono::high_resolution_clock::now();
 	//			std::chrono::duration<float> elapsed = end_time - start_time;
 	//			if (elapsed.count() >= timeout) return false;
-				// 动态预览：按约 4 帧/秒回传当前布线快照。
-				// 原实现每个网络都回传一次，网络多时主线程重绘压力大；
-				// 完全只发文本又会导致布线途中看不到任何变化。
+				// 约 4 次/秒回传进度和当前布线快照。
+				// 进度用进度条显示，日志里不再刷屏“布线进度”。
 				let now = Date.now();
-				if (this.m_verbosity >= 1 && (now - this.m_last_output_time) >= 250)
+				if ((now - this.m_last_output_time) >= 250)
 				{
 					this.m_last_output_time = now;
-					postMessage({type: 'log', message: `布线进度: ${index}/${this.m_netlist.length}`});
-					postMessage(this.output_pcb());
+					let routed = 0;
+					let total = 0;
+					for (let net of this.m_netlist)
+					{
+						if (net.m_radius === 0.0) continue;
+						total++;
+						if (net.m_paths.length) routed++;
+					}
+					postMessage({type: 'progress', done: routed, total: total});
+					if (this.m_verbosity >= 1) postMessage(this.output_pcb());
 				}
 			}
 			return !this.m_timedout;
@@ -748,8 +779,10 @@ var js_pcb = js_pcb || {};
 			track.push(this.m_gap*scale);
 			track.push(this.m_terminals.map(function(t)
 			{
+				// 第 5 项保留焊盘所在层，供预览区分顶层/底层/通孔焊盘
 				return [t[0]*scale, t[1]*scale, [t[2][0]*scale, t[2][1]*scale, t[2][2]],
-					t[3].map(function(n) { return [n[0]*scale, n[1]*scale]; })];
+					t[3].map(function(n) { return [n[0]*scale, n[1]*scale]; }),
+					t[4] || []];
 			}));
 			track.push(this.m_paths.map(function(path)
 			{

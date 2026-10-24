@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 	<meta charset="utf-8">
-	<title>JS-PCB 自动布线器 v1.6.0</title>
+	<title data-i18n="ui.windowTitle">JS-PCB 自动布线器 v1.6.0</title>
 	<script type="text/javascript" src="/iframe/jspcb/d3.v4.min.js"></script>
 	<script type="text/javascript" src="/iframe/jspcb/mymath.js"></script>
 	<script type="text/javascript" src="/iframe/jspcb/view.js"></script>
@@ -11,40 +11,40 @@
 	<script type="text/javascript" src="/iframe/jspcb/pcb2ses.js"></script>
 	<style type="text/css">
 		:root {
-			/* Dark Theme Default from theme.json */
-			--background: oklch(0.2891 0 0);
-			--foreground: oklch(0.8945 0 0);
-			--card: oklch(0.3211 0 0);
-			--card-foreground: oklch(0.8945 0 0);
-			--popover: oklch(0.3211 0 0);
-			--popover-foreground: oklch(0.8945 0 0);
-			--primary: oklch(0.7572 0 0);
-			--primary-foreground: oklch(0.2891 0 0);
-			--secondary: oklch(0.4676 0 0);
-			--secondary-foreground: oklch(0.8078 0 0);
-			--muted: oklch(0.3904 0 0);
-			--muted-foreground: oklch(0.7058 0 0);
-			--accent: oklch(0.9067 0 0);
-			--accent-foreground: oklch(0.3211 0 0);
-			--destructive: oklch(0.7915 0.0491 18.2410);
-			--destructive-foreground: oklch(0.2891 0 0);
-			--border: oklch(0.4276 0 0);
-			--input: oklch(0.3211 0 0);
-			--ring: oklch(0.8078 0 0);
-			--chart-1: oklch(0.9521 0 0);
-			--chart-2: oklch(0.8576 0 0);
-			--chart-3: oklch(0.7572 0 0);
-			--chart-4: oklch(0.6534 0 0);
-			--chart-5: oklch(0.5452 0 0);
-			--sidebar: oklch(0.2478 0 0);
-			--sidebar-foreground: oklch(0.8945 0 0);
-			--sidebar-primary: oklch(0.7572 0 0);
-			--sidebar-primary-foreground: oklch(0.2478 0 0);
-			--sidebar-accent: oklch(0.9067 0 0);
-			--sidebar-accent-foreground: oklch(0.3211 0 0);
-			--sidebar-border: oklch(0.4276 0 0);
-			--sidebar-ring: oklch(0.8078 0 0);
-			
+			/* 深色蓝调主题：提高对比度，避免整体发灰 */
+			--background: #0f141b;
+			--foreground: #e7eef7;
+			--card: #1a2230;
+			--card-foreground: #e7eef7;
+			--popover: #1a2230;
+			--popover-foreground: #e7eef7;
+			--primary: #4d9fff;
+			--primary-foreground: #07101d;
+			--secondary: #2b3a4e;
+			--secondary-foreground: #d7e3f2;
+			--muted: #253346;
+			--muted-foreground: #94a6bb;
+			--accent: #2f6feb;
+			--accent-foreground: #ffffff;
+			--destructive: #ff6b6b;
+			--destructive-foreground: #1a0505;
+			--border: #2d3b4e;
+			--input: #0d141d;
+			--ring: #4d9fff;
+			--chart-1: #4d9fff;
+			--chart-2: #4ade80;
+			--chart-3: #facc15;
+			--chart-4: #f472b6;
+			--chart-5: #a78bfa;
+			--sidebar: #151c26;
+			--sidebar-foreground: #dce7f5;
+			--sidebar-primary: #4d9fff;
+			--sidebar-primary-foreground: #07101d;
+			--sidebar-accent: #25374d;
+			--sidebar-accent-foreground: #ffffff;
+			--sidebar-border: #2a3848;
+			--sidebar-ring: #4d9fff;
+
 			--radius: 0.625rem;
 			--font-sans: "Inter", "Microsoft YaHei", -apple-system, BlinkMacSystemFont, sans-serif;
 			--font-mono: "Fira Code", "Consolas", monospace;
@@ -56,7 +56,7 @@
 			font-family: var(--font-sans);
 			margin: 0;
 			padding: 0;
-			background-color: var(--background);
+			background: radial-gradient(1100px 520px at 15% -10%, #172231 0%, var(--background) 58%);
 			height: 100vh;
 			overflow: hidden;
 			display: flex;
@@ -102,79 +102,178 @@
 		}
 
 		h2 {
-			font-size: 12px;
+			font-size: 11px;
 			font-weight: 600;
-			color: var(--sidebar-foreground);
+			color: var(--muted-foreground);
 			text-transform: uppercase;
-			letter-spacing: 0.05em;
-			margin: 0 0 10px 0;
+			letter-spacing: 0.09em;
+			margin: 0 0 8px 0;
 			padding-bottom: 7px;
 			border-bottom: 1px solid var(--sidebar-border);
-			opacity: 0.8;
 		}
 		
-		/* Form Controls */
-		.control-group {
-			margin-bottom: 10px;
-			position: relative;
-			min-width: 0;
-		}
-
-		.control-header {
+		/* Parameter rows */
+		.params-panel {
+			flex: 1 1 auto;
 			display: flex;
-			justify-content: space-between;
-			align-items: center;
-			gap: 6px;
-			margin-bottom: 2px;
+			flex-direction: column;
+			min-height: 0;
 		}
 
-		.control-group label {
+		.param-list {
+			flex: 1 1 auto;
+			display: flex;
+			flex-direction: column;
+			min-height: 0;
+			overflow-y: auto;
+			scrollbar-width: none;
+			-ms-overflow-style: none;
+		}
+
+		.param-list::-webkit-scrollbar {
+			width: 0;
+			display: none;
+		}
+
+		.param-row {
+			flex: 1 1 0;
+			min-height: 43px;
+			display: flex;
+			flex-direction: column;
+			justify-content: center;
+			gap: 1px;
+			padding: 3px 2px;
+			border-bottom: 1px solid rgba(255, 255, 255, 0.055);
+		}
+
+		.import-panel .param-row {
+			flex: 0 0 auto;
+			min-height: 44px;
+		}
+
+		.param-main {
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+			gap: 10px;
+		}
+
+		.param-desc {
+			font-size: 10px;
+			line-height: 1.2;
+			color: var(--muted-foreground);
+			white-space: nowrap;
+			overflow: hidden;
+			text-overflow: ellipsis;
+		}
+
+		.param-row:last-child {
+			border-bottom: none;
+		}
+
+		.param-row label {
 			font-size: 12px;
 			color: var(--sidebar-foreground);
-			font-weight: 400;
 			white-space: nowrap;
 		}
 
-		.control-desc {
-			font-size: 11px;
-			color: var(--muted-foreground);
-			line-height: 1.3;
+		/* 数字输入：步进按钮做在输入框内部 */
+		.num-field {
+			width: 76px;
+			flex: 0 0 auto;
+			display: flex;
+			align-items: stretch;
+			height: 24px;
+			border: 1px solid var(--sidebar-border);
+			border-radius: 6px;
+			background: var(--input);
+			overflow: hidden;
+			transition: border-color 0.15s, box-shadow 0.15s;
 		}
 
-		.control-group input[type="number"] {
-			width: 62px;
-			flex: 0 0 auto;
-			padding: 3px 6px;
-			border: 1px solid var(--sidebar-border);
-			border-radius: 4px;
+		.num-field:hover {
+			border-color: #3a4d66;
+		}
+
+		.num-field:focus-within {
+			border-color: var(--ring);
+			box-shadow: 0 0 0 2px rgba(77, 159, 255, 0.18);
+		}
+
+		.num-field input[type="number"] {
+			flex: 1 1 auto;
+			width: 0;
+			min-width: 0;
+			height: 100%;
+			padding: 0 4px 0 8px;
+			border: none;
 			outline: none;
-			background-color: var(--input);
+			background: transparent;
 			color: var(--foreground);
 			font-family: var(--font-mono);
 			font-size: 12px;
-			transition: all 0.2s;
 			text-align: right;
-			height: 26px;
+			-moz-appearance: textfield;
+			appearance: textfield;
 		}
 
-		.params-grid {
-			display: grid;
-			grid-template-columns: repeat(2, minmax(0, 1fr));
-			column-gap: 12px;
-			row-gap: 2px;
-			align-items: start;
+		.num-field input[type="number"]::-webkit-outer-spin-button,
+		.num-field input[type="number"]::-webkit-inner-spin-button {
+			-webkit-appearance: none;
+			margin: 0;
 		}
 
-		.run-hint {
-			margin-top: 10px;
-			font-size: 11px;
-			color: var(--muted-foreground);
-			text-align: center;
+		.num-stepper {
+			flex: 0 0 18px;
+			display: flex;
+			flex-direction: column;
+			border-left: 1px solid #24344a;
+			background: rgba(255, 255, 255, 0.035);
 		}
-		
-		.control-group input[type="number"]:focus {
-			border-color: var(--sidebar-ring);
-			box-shadow: 0 0 0 1px var(--sidebar-ring);
+
+		.step-btn {
+			flex: 1 1 50%;
+			width: 100%;
+			height: 50%;
+			min-height: 0;
+			padding: 0;
+			border: none;
+			border-radius: 0;
+			background: transparent;
+			color: #8fa4bc;
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			cursor: pointer;
+		}
+
+		.step-btn + .step-btn {
+			border-top: 1px solid #24344a;
+		}
+
+		.step-btn:hover {
+			background: rgba(77, 159, 255, 0.18);
+			color: #cfe3ff;
+		}
+
+		.step-btn:active {
+			background: rgba(77, 159, 255, 0.32);
+		}
+
+		.step-btn::before {
+			content: "";
+			width: 0;
+			height: 0;
+			border-left: 3px solid transparent;
+			border-right: 3px solid transparent;
+		}
+
+		.step-up::before {
+			border-bottom: 4px solid currentColor;
+		}
+
+		.step-down::before {
+			border-top: 4px solid currentColor;
 		}
 
 		/* File Input */
@@ -185,25 +284,9 @@
 			border-radius: var(--radius);
 			text-align: center;
 			transition: all 0.2s;
-			background: rgba(255, 255, 255, 0.02);
+			background: rgba(77, 159, 255, 0.05);
 			cursor: pointer;
 		}
-
-		.dsn-status {
-			margin-bottom: 10px;
-			padding: 6px 8px;
-			border-radius: 4px;
-			background: var(--input);
-			color: var(--muted-foreground);
-			font-size: 11px;
-			white-space: nowrap;
-			overflow: hidden;
-			text-overflow: ellipsis;
-		}
-
-		.dsn-status.loading { color: var(--primary); }
-		.dsn-status.success { color: var(--success, #4ade80); }
-		.dsn-status.error { color: var(--destructive); }
 
 		.file-input-wrapper:hover {
 			border-color: var(--sidebar-primary);
@@ -243,12 +326,18 @@
 		}
 		
 		#go {
-			background-color: var(--sidebar-primary);
-			color: var(--sidebar-primary-foreground);
+			background: #3b82f6;
+			color: #ffffff;
+			border: 1px solid #5aa7ff;
 		}
-		
+
 		#go:hover {
-			opacity: 0.9;
+			background: #4d9fff;
+		}
+
+		#go.stop-mode {
+			background: #b45309;
+			border-color: #f59e0b;
 		}
 		
 		button:disabled {
@@ -264,16 +353,41 @@
 			display: flex;
 			align-items: center;
 			justify-content: space-between;
-			padding: 7px 12px;
+			padding: 9px 14px;
 			border-bottom: 1px solid var(--sidebar-border);
-			background: var(--sidebar);
+			background: linear-gradient(180deg, #1b2534 0%, #151c26 100%);
 		}
 
 		.sidebar-title {
-			font-size: 12px;
+			font-size: 12.5px;
 			font-weight: 600;
-			letter-spacing: 0.02em;
-			color: var(--sidebar-foreground);
+			letter-spacing: 0.03em;
+			color: #eaf2ff;
+		}
+
+		.sidebar-actions {
+			display: flex;
+			align-items: center;
+			gap: 6px;
+		}
+
+		.lang-btn {
+			flex: 0 0 auto;
+			min-width: 30px;
+			height: 22px;
+			padding: 0 7px;
+			border-radius: 11px;
+			border: 1px solid #33455c;
+			background: #1e2a3a;
+			color: #9fb7d4;
+			font-size: 10px;
+			font-weight: 600;
+			line-height: 1;
+		}
+
+		.lang-btn:hover {
+			background: var(--sidebar-accent);
+			color: var(--sidebar-accent-foreground);
 		}
 
 		.help-btn {
@@ -282,9 +396,9 @@
 			height: 22px;
 			padding: 0;
 			border-radius: 50%;
-			border: 1px solid var(--sidebar-border);
-			background: transparent;
-			color: var(--sidebar-foreground);
+			border: 1px solid #33455c;
+			background: #1e2a3a;
+			color: #9fb7d4;
 			font-size: 12px;
 			line-height: 1;
 		}
@@ -361,7 +475,7 @@
 		}
 
 		.modal-body a {
-			color: var(--primary);
+			color: #6db4ff;
 		}
 
 		/* Main Content - Right Side */
@@ -385,24 +499,63 @@
 			align-items: center;
 		}
 
+		.pcb-legend {
+			position: absolute;
+			top: 12px;
+			left: 12px;
+			z-index: 5;
+			display: flex;
+			gap: 12px;
+			padding: 6px 10px;
+			border-radius: 6px;
+			background: rgba(10, 16, 24, 0.75);
+			border: 1px solid #223247;
+			font-size: 11px;
+			color: #b9c8da;
+			pointer-events: none;
+		}
+
+		.pcb-legend span {
+			display: flex;
+			align-items: center;
+			gap: 5px;
+		}
+
+		.pcb-legend .dot {
+			width: 8px;
+			height: 8px;
+			border-radius: 50%;
+			display: inline-block;
+		}
+
+		.pcb-legend .top { background: #f87171; }
+		.pcb-legend .bottom { background: #4ade80; }
+		.pcb-legend .thru { background: #e5e7eb; }
+
 		/* Log panel (bottom of preview area) */
 		#log_panel {
-			flex: 0 0 400px;
-			height: 400px;
+			flex: 0 0 20%;
+			height: 20%;
+			min-height: 110px;
 			display: flex;
 			flex-direction: column;
-			background: #0b0b0b;
-			border-top: 1px solid #333;
+			background: #0a0f16;
+			border-top: 1px solid #26364a;
 			min-height: 0;
 		}
 
 		.log-title {
 			flex: 0 0 auto;
-			padding: 6px 10px;
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+			gap: 12px;
+			padding: 6px 12px;
 			font-size: 11px;
-			color: var(--muted-foreground);
-			border-bottom: 1px solid #222;
-			letter-spacing: 0.04em;
+			color: #93a9c2;
+			background: #101822;
+			border-bottom: 1px solid #223247;
+			letter-spacing: 0.06em;
 		}
 
 		#log-content {
@@ -410,9 +563,24 @@
 			min-height: 0;
 			overflow-y: auto;
 			padding: 8px 10px;
-			color: #4ade80; /* Tailwind green-400 */
+			color: #86e6a0;
 			font-family: var(--font-mono);
 			font-size: 11px;
+			scrollbar-width: thin;
+			scrollbar-color: #2a3848 transparent;
+		}
+
+		#log-content::-webkit-scrollbar {
+			width: 8px;
+		}
+
+		#log-content::-webkit-scrollbar-thumb {
+			background: #2a3848;
+			border-radius: 4px;
+		}
+
+		#log-content::-webkit-scrollbar-track {
+			background: transparent;
 		}
 
 		.log-entry {
@@ -435,19 +603,49 @@
 		}
 		
 		#timer-display {
-			position: absolute;
-			top: 20px;
-			right: 20px;
-			background: var(--primary);
-			color: var(--primary-foreground);
-			padding: 6px 12px;
+			background: #1d2a3b;
+			color: #8fc2ff;
+			padding: 2px 8px;
 			border-radius: 4px;
+			border: 1px solid #2a3d55;
 			font-family: var(--font-mono);
-			font-size: 14px;
+			font-size: 11px;
 			font-weight: 600;
-			z-index: 101;
 			display: none;
-			box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+		}
+
+		.progress-area {
+			flex: 0 0 auto;
+			display: flex;
+			align-items: center;
+			gap: 10px;
+			padding: 8px 12px;
+			background: #0d131b;
+			border-top: 1px solid #223247;
+		}
+
+		.progress-track {
+			flex: 1 1 auto;
+			height: 8px;
+			background: #1c2735;
+			border-radius: 999px;
+			overflow: hidden;
+		}
+
+		.progress-fill {
+			width: 0%;
+			height: 100%;
+			background: #4d9fff;
+			border-radius: 999px;
+			transition: width 0.2s ease;
+		}
+
+		#progress-text {
+			flex: 0 0 auto;
+			font-family: var(--font-mono);
+			font-size: 11px;
+			color: #93a9c2;
+			white-space: nowrap;
 		}
 
 	</style>
@@ -455,113 +653,112 @@
 <body>
 	<div class="sidebar">
 		<div class="sidebar-top">
-			<span class="sidebar-title">JS-PCB 自动布线</span>
-			<button id="help_btn" class="help-btn" type="button" title="关于">?</button>
+			<span class="sidebar-title" data-i18n="ui.appTitle">JS-PCB 自动布线</span>
+			<div class="sidebar-actions">
+				<button id="lang_btn" class="lang-btn" type="button" title="切换语言">EN</button>
+				<button id="help_btn" class="help-btn" type="button" title="关于" data-i18n-title="ui.about">?</button>
+			</div>
 		</div>
 		<div class="sidebar-content">
-			<div class="panel">
-				<h2>导入设置</h2>
-				<div class="control-group">
-					<div class="control-header">
-						<label for="arg_g">边框间隙 (Gap)</label>
+			<div class="panel import-panel">
+				<h2 data-i18n="ui.importSettings">导入设置</h2>
+				<div class="param-row">
+					<div class="param-main">
+						<label for="arg_g" title="Gap" data-i18n="ui.boardGap">边框间隙</label>
 						<input id="arg_g" type="number" min="1" max="5" step="1" value="2"/>
 					</div>
-					<div class="control-desc">PCB 边界与布线区域保留的间距（×0.1mm）</div>
+					<div class="param-desc" data-i18n="ui.boardGapDesc">单位 0.1mm（2 = 0.2mm）</div>
 				</div>
-				
+
 				<div class="file-input-wrapper" id="file_input_wrapper">
 					<input type="file" id="files" name="files[]" accept=".dsn" single/>
 				</div>
-
-				<div class="dsn-status" id="dsn_status">等待载入 DSN…</div>
 
 				<input type="checkbox" id="dsn_normalize" class="hidden-option" checked/>
 				<input id="scale" type="number" class="hidden-option" value="1"/>
 			</div>
 
-			<div class="panel">
-				<h2>布线参数</h2>
-				
+			<div class="panel params-panel">
+				<h2 data-i18n="ui.routingParams">布线参数</h2>
+
 				<input id="arg_v" type="number" class="hidden-option" value="1"/>
 
-				<div class="params-grid">
-					<div class="control-group">
-						<div class="control-header">
-							<label for="arg_t" title="Timeout">超时时间</label>
-							<input id="arg_t" type="number" min="0" max="10000" step="1" value="600"/>
+				<div class="param-list">
+					<div class="param-row">
+						<div class="param-main">
+							<label for="arg_c" title="Clearance Add" data-i18n="ui.extraClearance">额外间距</label>
+							<input id="arg_c" type="number" min="0" max="20" step="1" value="0"/>
 						</div>
-						<div class="control-desc">最大运行时间（秒）</div>
+						<div class="param-desc" data-i18n="ui.extraClearanceDesc">在 DSN 间距基础上额外增加（0.1mm）</div>
 					</div>
-
-					<div class="control-group">
-						<div class="control-header">
-							<label for="arg_z" title="Via Cost">过孔代价</label>
+					<div class="param-row">
+						<div class="param-main">
+							<label for="arg_t" title="Timeout" data-i18n="ui.timeout">超时时间</label>
+							<input id="arg_t" type="number" min="0" max="10000" step="1" value="3600"/>
+						</div>
+						<div class="param-desc" data-i18n="ui.timeoutDesc">单位：秒（0 = 不限制）</div>
+					</div>
+					<div class="param-row">
+						<div class="param-main">
+							<label for="arg_z" title="Via Cost" data-i18n="ui.viaCost">过孔代价</label>
 							<input id="arg_z" type="number" min="0" max="256" step="1" value="16"/>
 						</div>
-						<div class="control-desc">越高越少用过孔</div>
+						<div class="param-desc" data-i18n="ui.viaCostDesc">相对权重，越高越少用过孔</div>
 					</div>
-
-					<div class="control-group">
-						<div class="control-header">
-							<label for="arg_s" title="Samples">采样次数</label>
+					<div class="param-row">
+						<div class="param-main">
+							<label for="arg_s" title="Samples" data-i18n="ui.samples">采样次数</label>
 							<input id="arg_s" type="number" min="1" max="32" step="1" value="1"/>
 						</div>
-						<div class="control-desc">路径搜索迭代次数</div>
+						<div class="param-desc" data-i18n="ui.samplesDesc">单位：次</div>
 					</div>
-
-					<div class="control-group">
-						<div class="control-header">
-							<label for="arg_r" title="Resolution">网格分辨率</label>
+					<div class="param-row">
+						<div class="param-main">
+							<label for="arg_r" title="Resolution" data-i18n="ui.resolution">网格分辨率</label>
 							<input id="arg_r" type="number" min="1" max="4" step="1" value="1"/>
 						</div>
-						<div class="control-desc">网格精细度倍率</div>
+						<div class="param-desc" data-i18n="ui.resolutionDesc">1 = 0.1mm，数值越大网格越粗</div>
 					</div>
-
-					<div class="control-group">
-						<div class="control-header">
-							<label for="arg_d" title="Metric">距离度量</label>
+					<div class="param-row">
+						<div class="param-main">
+							<label for="arg_d" title="Metric" data-i18n="ui.metric">距离度量</label>
 							<input id="arg_d" type="number" min="0" max="4" step="1" value="1"/>
 						</div>
-						<div class="control-desc">0 欧氏 / 1 曼哈顿</div>
+						<div class="param-desc" data-i18n="ui.metricDesc">0 欧氏² / 1 曼哈顿 / 2 欧氏 / 3 切比雪夫 / 4 倒数</div>
 					</div>
-
-					<div class="control-group">
-						<div class="control-header">
-							<label for="arg_q" title="Quantization">量化精度</label>
+					<div class="param-row">
+						<div class="param-main">
+							<label for="arg_q" title="Quantization" data-i18n="ui.quantization">量化精度</label>
 							<input id="arg_q" type="number" min="0" max="64" step="1" value="2"/>
 						</div>
-						<div class="control-desc">坐标吸附精度</div>
+						<div class="param-desc" data-i18n="ui.quantizationDesc">单位：网格数</div>
 					</div>
-
-					<div class="control-group">
-						<div class="control-header">
-							<label for="arg_fr" title="Spread">扩散范围</label>
+					<div class="param-row">
+						<div class="param-main">
+							<label for="arg_fr" title="Spread" data-i18n="ui.spread">扩散范围</label>
 							<input id="arg_fr" type="number" min="0" max="5" step="1" value="2"/>
 						</div>
-						<div class="control-desc">向外扩散系数</div>
+						<div class="param-desc" data-i18n="ui.spreadDesc">单位：网格数</div>
 					</div>
-
-					<div class="control-group">
-						<div class="control-header">
-							<label for="arg_xr" title="X-Range">X 范围</label>
+					<div class="param-row">
+						<div class="param-main">
+							<label for="arg_xr" title="X-Range" data-i18n="ui.xRange">X 范围</label>
 							<input id="arg_xr" type="number" min="0" max="5" step="1" value="1"/>
 						</div>
-						<div class="control-desc">水平搜索范围</div>
+						<div class="param-desc" data-i18n="ui.xRangeDesc">单位：网格数</div>
 					</div>
-
-					<div class="control-group">
-						<div class="control-header">
-							<label for="arg_yr" title="Y-Range">Y 范围</label>
+					<div class="param-row">
+						<div class="param-main">
+							<label for="arg_yr" title="Y-Range" data-i18n="ui.yRange">Y 范围</label>
 							<input id="arg_yr" type="number" min="0" max="5" step="1" value="1"/>
 						</div>
-						<div class="control-desc">垂直搜索范围</div>
+						<div class="param-desc" data-i18n="ui.yRangeDesc">单位：网格数</div>
 					</div>
 				</div>
 
 				<div class="btn-group">
 					<button id="go" type="button">开始布线</button>
 				</div>
-				<div class="run-hint">布线完成后会自动导入当前 PCB</div>
 			</div>
 
 		</div>
@@ -571,27 +768,39 @@
 		<div id="pcb_view">
 			<!-- SVG 将被渲染在这里 -->
 		</div>
-		<div id="timer-display">00:00</div>
+		<div class="pcb-legend">
+			<span><i class="dot top"></i><span data-i18n="ui.legendTop">顶层焊盘</span></span>
+			<span><i class="dot bottom"></i><span data-i18n="ui.legendBottom">底层焊盘</span></span>
+			<span><i class="dot thru"></i><span data-i18n="ui.legendThru">通孔焊盘</span></span>
+		</div>
 		<div id="log_panel">
-			<div class="log-title">布线日志</div>
+			<div class="log-title">
+				<span data-i18n="ui.logTitle">布线日志</span>
+				<span id="timer-display">00:00</span>
+			</div>
 			<div id="log-content"></div>
+			<div class="progress-area">
+				<div class="progress-track"><div id="progress-fill" class="progress-fill"></div></div>
+				<span id="progress-text">0 / 0</span>
+			</div>
 		</div>
 	</div>
 
 	<div id="help_modal" class="modal-mask" style="display: none;">
 		<div class="modal">
 			<div class="modal-header">
-				<h3>关于 JS-PCB 自动布线</h3>
-				<button id="help_close" class="modal-close" type="button" title="关闭">×</button>
+				<h3 data-i18n="ui.aboutTitle">关于 JS-PCB 自动布线</h3>
+				<button id="help_close" class="modal-close" type="button" title="关闭" data-i18n-title="ui.close">×</button>
 			</div>
 			<div class="modal-body">
-				<p>JS-PCB Autorouter v1.6.0 | Based on <a href="https://github.com/vygr/JS-PCB" target="_blank" rel="noopener">github.com/vygr/JS-PCB</a></p>
-				<p>将当前 PCB 导出为 DSN，调用 JS-PCB 布线引擎，在右侧实时预览布线结果，布线完成后自动导入 PCB。</p>
-				<p>打开窗口时会自动从 EDA 获取并载入当前 PCB 的 DSN。</p>
+				<p><span data-i18n="ui.aboutVersion">JS-PCB 自动布线器 v1.6.0 | 基于</span> <a href="https://github.com/vygr/JS-PCB" target="_blank" rel="noopener">github.com/vygr/JS-PCB</a></p>
+				<p data-i18n="ui.aboutDesc1">将当前 PCB 导出为 DSN，调用 JS-PCB 布线引擎，在右侧实时预览布线结果，布线完成后自动导入 PCB。</p>
+				<p data-i18n="ui.aboutDesc2">打开窗口时会自动从 EDA 获取并载入当前 PCB 的 DSN。</p>
 			</div>
 		</div>
 	</div>
 
+	<script type="text/javascript" src="/iframe/jspcb/i18n.js"></script>
 	<script type="text/javascript" src="/iframe/jspcb/main.js"></script>
 </body>
 </html>

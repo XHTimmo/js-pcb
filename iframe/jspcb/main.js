@@ -8,11 +8,18 @@ let currentBoundary = null;  // 板框（与布线结果同一坐标系），用
 let isDsnNormalized = false;  // 是否已做 DSN 归一化
 let routingTimer = null;
 let routingStartTime = 0;
+let isRouting = false;
+
+function t(key, ...args)
+{
+	if (window.jspcbI18n && window.jspcbI18n.t) return window.jspcbI18n.t(key, ...args);
+	return key;
+}
 
 function startTimer() {
 	stopTimer();
 	const display = document.getElementById('timer-display');
-	display.style.display = 'block';
+	display.style.display = 'inline-block';
 	display.innerText = '00:00';
 	routingStartTime = Date.now();
 	
@@ -60,12 +67,45 @@ async function createRoutingWorker() {
 	return new Worker(workerBlobUrl);
 }
 
+function setRoutingState(running)
+{
+	isRouting = running;
+	const btn = document.getElementById('go');
+	if (!btn) return;
+	btn.innerText = running ? t('ui.stop') : t('ui.start');
+	btn.classList.toggle('stop-mode', running);
+}
+
+function stopRouting()
+{
+	if (worker !== null)
+	{
+		try { worker.terminate(); } catch (e) {}
+		worker = null;
+	}
+	setRoutingState(false);
+	stopTimer();
+	appendLog(t('log.stopped'));
+}
+
+function setProgress(done, total)
+{
+	const fill = document.getElementById('progress-fill');
+	const text = document.getElementById('progress-text');
+	const pct = total > 0 ? Math.min(100, Math.round((done / total) * 100)) : 0;
+	if (fill) fill.style.width = pct + '%';
+	if (text) text.innerText = t('ui.progress', done, total, pct);
+}
+
 async function handleOnGo(evt)
 {
+	if (isRouting) { stopRouting(); return; }
+
 	if (file !== null)
 	{
 		//params
 		let arg_g = +document.getElementById('arg_g').value;
+		let arg_c = +document.getElementById('arg_c').value;
 		let arg_t = +document.getElementById('arg_t').value;
 		let arg_v = +document.getElementById('arg_v').value;
 		let arg_s = +document.getElementById('arg_s').value;
@@ -79,8 +119,9 @@ async function handleOnGo(evt)
 
 		// Reset log UI
 		document.getElementById('log-content').innerHTML = ''; // Clear logs
-		appendLog("系统就绪，开始初始化布线线程...");
-		document.getElementById('go').disabled = true;
+		appendLog(t('log.init'));
+		setRoutingState(true);
+		setProgress(0, 0);
 		startTimer();
 
 		//run pcb solver web worker thread, register output listner
@@ -93,23 +134,41 @@ async function handleOnGo(evt)
 			worker = await createRoutingWorker();
 		} catch (e) {
 			const msg = e && e.message ? e.message : String(e);
-			appendLog('Worker 创建失败: ' + msg);
-			document.getElementById('go').disabled = false;
+			appendLog(t('log.workerCreateFail', msg));
+			setRoutingState(false);
 			stopTimer();
+			return;
+		}
+		// 创建过程中用户点击了“停止布线”
+		if (!isRouting) {
+			try { worker.terminate(); } catch (e) {}
+			worker = null;
 			return;
 		}
 		worker.addEventListener('message', function(event)
 		{
-			// Handle log messages
+			// 进度条更新
+			if (event.data.type === 'progress') {
+				setProgress(event.data.done || 0, event.data.total || 0);
+				return;
+			}
+
+			// Handle log messages (structured keys from worker/router)
 			if (event.data.type === 'log') {
-				appendLog(event.data.message);
+				const key = event.data.key;
+				const text = key ? t(key, ...(event.data.args || [])) : event.data.message;
+				appendLog(text);
+				if (key === 'log.allDone') {
+					setRoutingState(false);
+					stopTimer();
+				}
 				return;
 			}
 
 			// Worker 内部异常：恢复界面，避免一直卡在“开始布线”状态
 			if (event.data.type === 'error') {
-				appendLog('布线出错: ' + event.data.message);
-				document.getElementById('go').disabled = false;
+				appendLog(t('log.routeError', event.data.message));
+				setRoutingState(false);
 				stopTimer();
 				return;
 			}
@@ -118,8 +177,13 @@ async function handleOnGo(evt)
 			if (event.data.type === 'done') {
 				lastPcbData = event.data.data;
 				js_pcb.view_pcb(lastPcbData, 0, 2, currentBoundary);
-				document.getElementById('go').disabled = false;
+				setRoutingState(false);
 				stopTimer();
+				const total = event.data.total || 0;
+				const unrouted = event.data.unrouted || 0;
+				const routed = Math.max(0, total - unrouted);
+				setProgress(routed, total);
+				showToast(t('toast.done', routed, total), unrouted ? 'warn' : 'success', 4);
 				importResultToPcb(lastPcbData);
 				return;
 			}
@@ -141,21 +205,23 @@ async function handleOnGo(evt)
 		// 捕获 worker 加载/运行失败（例如跨域或脚本异常）
 		worker.addEventListener('error', function(event)
 		{
-			appendLog('Worker 运行失败: ' + (event.message || '未知错误'));
-			document.getElementById('go').disabled = false;
+			appendLog(t('log.workerRuntime', event.message || ''));
+			setRoutingState(false);
 			stopTimer();
 		}, false);
 
 		//post to solver thread
 		try {
-			const pcbData = js_pcb.dsn2pcb(file, arg_g);
+			const pcbData = js_pcb.dsn2pcb(file, arg_g, arg_c);
 			currentBoundary = Array.isArray(pcbData[2]) ? pcbData[2] : null;
+			const totalNets = pcbData[1].filter(function(t) { return t[0] > 0; }).length;
+			setProgress(0, totalNets);
 			worker.postMessage([pcbData,
 						arg_t, arg_v, arg_s, arg_z, arg_r, arg_q, arg_d, arg_fr, arg_xr, arg_yr]);
 		} catch (e) {
 			// DSN 解析失败时也必须恢复界面，否则按钮会一直处于禁用状态
-			appendLog('DSN 解析失败: ' + (e && e.message ? e.message : String(e)));
-			document.getElementById('go').disabled = false;
+			appendLog(t('log.dsnParseFail', e && e.message ? e.message : String(e)));
+			setRoutingState(false);
 			stopTimer();
 		}
 	}
@@ -165,17 +231,17 @@ function appendLog(message) {
 	let logContainer = document.getElementById('log-content');
 	let entry = document.createElement('div');
 	entry.className = 'log-entry';
-	entry.innerText = message;
+
+	const now = new Date();
+	const ts = String(now.getHours()).padStart(2, '0') + ':' +
+		String(now.getMinutes()).padStart(2, '0') + ':' +
+		String(now.getSeconds()).padStart(2, '0');
+	entry.innerText = '[' + ts + '] ' + message;
 	logContainer.appendChild(entry);
 
 	// Auto scroll to bottom
 	logContainer.scrollTop = logContainer.scrollHeight;
 
-	// Check for completion message to re-enable button
-	if (message.includes("所有采样完成")) {
-		document.getElementById('go').disabled = false;
-		stopTimer();
-	}
 }
 
 //布线完成后自动导入 SES
@@ -188,7 +254,7 @@ async function importResultToPcb(pcbData)
 			return t[4] && t[4].length;
 		});
 		if (!hasTracks) {
-			appendLog('没有可导入的走线，已跳过自动导入');
+			appendLog(t('log.noTracks'));
 			return;
 		}
 
@@ -204,22 +270,21 @@ async function importResultToPcb(pcbData)
 			const sesFile = new File([sesContent], fileName + '.ses', { type: 'text/plain' });
 			try {
 				await eda.pcb_Document.importAutoRouteSesFile(sesFile);
-				appendLog('布线结果已自动导入 PCB');
-				eda?.sys_Message?.showToastMessage?.('布线结果已导入 PCB', 'success', 3);
+				appendLog(t('log.imported'));
 			} catch (e) {
 				console.error('[jspcb][eda] import failed', e);
-				appendLog('自动导入失败: ' + (e && e.message ? e.message : e));
+				appendLog(t('log.importFail', e && e.message ? e.message : e));
 				try {
 					if (eda?.sys_FileSystem?.saveFile) {
 						await eda.sys_FileSystem.saveFile(sesFile, sesFile.name);
-						appendLog('SES 导入失败，已保存为文件: ' + sesFile.name);
-						eda?.sys_Message?.showToastMessage?.('SES 导入失败，已保存文件', 'warning', 6);
+						appendLog(t('log.savedFile', sesFile.name));
+						showToast(t('toast.importSaved'), 'warn', 6);
 					} else {
-						eda?.sys_Message?.showToastMessage?.('SES 导入失败', 'error', 6);
+						showToast(t('toast.importFail'), 'error', 6);
 					}
 				} catch (e2) {
 					console.error('[jspcb][eda] save fallback failed', e2);
-					eda?.sys_Message?.showToastMessage?.('SES 导入失败且保存失败', 'error', 8);
+					showToast(t('toast.importFailSave'), 'error', 8);
 				}
 			}
 			return;
@@ -235,15 +300,15 @@ async function importResultToPcb(pcbData)
 		a.click();
 		document.body.removeChild(a);
 		URL.revokeObjectURL(url);
-		appendLog('已导出 SES 文件');
+		appendLog(t('log.exported'));
 	} catch (err) {
 		console.error('[jspcb] auto import failed', err);
-		appendLog('SES 生成失败: ' + (err && err.message ? err.message : err));
+		appendLog(t('log.sesFail', err && err.message ? err.message : err));
 	}
 }
 
 //file onload handler
-function handleOnLoad(evt)
+function handleOnLoad(evt, silent)
 {
 	//the onload get a string of the dsn file
 	let content = evt.target.result;
@@ -258,13 +323,12 @@ function handleOnLoad(evt)
 			console.log('DSN 已归一化');
 		} catch (err) {
 			console.error('DSN 归一化失败:', err);
-			alert('DSN 归一化失败: ' + err.message);
 			// 转换失败时不要继续使用未转换的数据，否则坐标系不一致，
 			// 布线器会把整块板当成只有几毫米大小。
 			file = null;
 			lastPcbData = null;
 			currentBoundary = null;
-			setDsnStatus('DSN 归一化失败：' + err.message, 'error');
+			if (!silent) showToast(t('log.normFail', err.message), 'error', 6);
 			return false;
 		}
 	}
@@ -272,8 +336,29 @@ function handleOnLoad(evt)
 	file = content;
 	lastPcbData = null;
 	currentBoundary = null;
-	setDsnStatus('已载入：' + fileName, 'success');
+	if (!silent) showToast(t('toast.dsnLoaded', fileName), 'success', 2);
+
+	// 打开窗口后立即绘制板框和焊盘，不必等到开始布线
+	renderBoardPreview();
 	return true;
+}
+
+// 解析 DSN 并绘制静态预览（板框 + 焊盘，无走线）
+function renderBoardPreview()
+{
+	if (file === null) return;
+	try {
+		const gap = +document.getElementById('arg_g').value;
+		const clearance = +document.getElementById('arg_c').value;
+		const pcbData = js_pcb.dsn2pcb(file, gap, clearance);
+		currentBoundary = Array.isArray(pcbData[2]) ? pcbData[2] : null;
+		lastPcbData = pcbData;
+		js_pcb.view_pcb(pcbData, 0, 2, currentBoundary);
+		const totalNets = pcbData[1].filter(function(t) { return t[0] > 0; }).length;
+		setProgress(0, totalNets);
+	} catch (e) {
+		console.error('[jspcb] preview failed', e);
+	}
 }
 
 //file selection handler
@@ -308,18 +393,57 @@ window.addEventListener('resize', function() {
 	}
 });
 
+// 数字输入框：隐藏原生上下箭头，改成输入框内部的上下步进按钮
+function enhanceNumberInputs()
+{
+	document.querySelectorAll('.param-row input[type="number"]').forEach(function(input) {
+		if (input.parentElement && input.parentElement.classList.contains('num-field')) return;
+
+		const field = document.createElement('div');
+		field.className = 'num-field';
+		input.parentNode.insertBefore(field, input);
+		field.appendChild(input);
+
+		const stepper = document.createElement('div');
+		stepper.className = 'num-stepper';
+		stepper.innerHTML =
+			'<button type="button" class="step-btn step-up" tabindex="-1" aria-label="' + t('ui.increase') + '"></button>' +
+			'<button type="button" class="step-btn step-down" tabindex="-1" aria-label="' + t('ui.decrease') + '"></button>';
+		field.appendChild(stepper);
+
+		function step(dir) {
+			const min = input.min === '' ? -Infinity : +input.min;
+			const max = input.max === '' ? Infinity : +input.max;
+			const stepSize = input.step === '' ? 1 : +input.step;
+			let value = input.value === '' ? (isFinite(min) ? min : 0) : +input.value;
+			value = Math.min(max, Math.max(min, value + dir * stepSize));
+			input.value = String(value);
+			input.dispatchEvent(new Event('input', { bubbles: true }));
+			input.dispatchEvent(new Event('change', { bubbles: true }));
+		}
+
+		stepper.querySelector('.step-up').addEventListener('click', function() { step(1); });
+		stepper.querySelector('.step-down').addEventListener('click', function() { step(-1); });
+	});
+}
+
+enhanceNumberInputs();
+
 //register action handlers
 document.getElementById('files').addEventListener('change', handleFileSelect, false);
 document.getElementById('go').onclick = handleOnGo;
+// 修改边框间隙后同步刷新静态预览
+document.getElementById('arg_g').addEventListener('change', renderBoardPreview, false);
 // ===== 从 EDA 自动获取并载入 DSN =====
 let autoLoadInFlight = false;
 
-function setDsnStatus(text, state) {
-	const el = document.getElementById('dsn_status');
-	if (!el) return;
-	el.innerText = text;
-	el.classList.remove('loading', 'success', 'error');
-	if (state) el.classList.add(state);
+function showToast(message, type, duration) {
+	if (typeof eda === 'undefined') return;
+	try {
+		eda?.sys_Message?.showToastMessage?.(message, type || 'info', duration || 3);
+	} catch (e) {
+		console.warn('[jspcb] toast failed', e);
+	}
 }
 
 function delay(ms) {
@@ -350,17 +474,19 @@ async function loadDsnFromEdaOnce() {
 	if (typeof dsnFile === 'string') dsnContent = dsnFile;
 	else if (dsnFile && typeof dsnFile.text === 'function') dsnContent = await dsnFile.text();
 	else if (dsnFile instanceof ArrayBuffer) dsnContent = new TextDecoder().decode(dsnFile);
-	else throw new Error('无法读取 EDA 返回的 DSN');
+	else throw new Error(t('ui.errReadDsn'));
 
-	if (!dsnContent || dsnContent.trim().length < 50) throw new Error('DSN 内容为空');
+	if (!dsnContent || dsnContent.trim().length < 50) throw new Error(t('ui.errEmptyDsn'));
 
 	const checkbox = document.getElementById('dsn_normalize');
 	if (checkbox) checkbox.checked = true;
 
 	const info = typeof parseDsnInfo === 'function' ? parseDsnInfo(dsnContent) : null;
 	if (info && info.fileName) fileName = info.fileName;
-	if (handleOnLoad({ target: { result: dsnContent } }) === false) {
-		throw new Error('DSN 归一化失败');
+	if (handleOnLoad({ target: { result: dsnContent } }, true) === false) {
+		const err = new Error(t('ui.errNormalize'));
+		err.fatal = true;
+		throw err;
 	}
 }
 
@@ -371,44 +497,65 @@ async function autoLoadDsnFromEda() {
 		const ready = await waitForEdaApi(5000);
 		if (!ready) {
 			// 非 EDA 环境（例如浏览器里直接打开），保留文件选择
-			setDsnStatus('请选择 .dsn 文件');
 			return;
 		}
 
 		enableEdaMode();
-		setDsnStatus('正在从 EDA 获取 DSN…', 'loading');
+		showToast(t('toast.fetchingDsn'), 'info', 2);
 
 		let lastError = null;
 		for (let attempt = 1; attempt <= 5; attempt++) {
 			try {
 				await loadDsnFromEdaOnce();
-				setDsnStatus('已自动载入：' + fileName, 'success');
-				eda?.sys_Message?.showToastMessage?.('DSN 已自动载入', 'success', 2);
+				showToast(t('toast.dsnLoaded', fileName), 'success', 2);
 				return;
 			} catch (e) {
 				lastError = e;
 				console.warn('[jspcb][eda] 自动获取 DSN 失败，第 ' + attempt + ' 次', e);
+				if (e && e.fatal) break;
 				if (attempt < 5) {
-					setDsnStatus('正在重试获取 DSN（' + attempt + '/5）…', 'loading');
 					await delay(300 + attempt * 300);
 				}
 			}
 		}
 
-		const msg = lastError && lastError.message ? lastError.message : '未知错误';
+		const msg = lastError && lastError.message ? lastError.message : t('ui.errUnknown');
 		console.error('[jspcb][eda] load DSN failed', lastError);
-		setDsnStatus('DSN 自动获取失败：' + msg, 'error');
-		eda?.sys_Message?.showToastMessage?.('DSN 自动获取失败，请重新打开窗口', 'error', 6);
+		showToast(t('toast.dsnFail', msg), 'error', 6);
 	} catch (e) {
 		console.error('[jspcb][eda] auto load failed', e);
-		setDsnStatus('DSN 自动获取失败：' + (e && e.message ? e.message : e), 'error');
+		showToast(t('toast.dsnFail', e && e.message ? e.message : e), 'error', 6);
 	} finally {
 		autoLoadInFlight = false;
 	}
 }
 
-// 弹窗打开即自动获取并载入 DSN
-autoLoadDsnFromEda();
+// 语言切换按钮（位于“?”左侧）
+(function initLanguageSwitch() {
+	const btn = document.getElementById('lang_btn');
+	if (!btn || !window.jspcbI18n) return;
+	btn.addEventListener('click', function() {
+		const next = window.jspcbI18n.getLang() === 'en' ? 'zh-Hans' : 'en';
+		window.jspcbI18n.setLang(next);
+	});
+})();
+
+// 语言切换后同步“开始/停止布线”按钮等动态文案
+document.addEventListener('jspcb-lang-change', function() {
+	setRoutingState(isRouting);
+	document.querySelectorAll('.step-up').forEach(function(btn) { btn.setAttribute('aria-label', t('ui.increase')); });
+	document.querySelectorAll('.step-down').forEach(function(btn) { btn.setAttribute('aria-label', t('ui.decrease')); });
+});
+
+// 等词条加载完成后再自动获取 DSN，保证吐司使用正确语言
+if (window.jspcbI18n && window.jspcbI18n.ready) {
+	window.jspcbI18n.ready.then(function() {
+		setRoutingState(isRouting);
+		autoLoadDsnFromEda();
+	});
+} else {
+	autoLoadDsnFromEda();
+}
 
 // ===== 关于（?）弹窗 =====
 (function initHelpDialog() {
