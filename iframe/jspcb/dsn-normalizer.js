@@ -1,11 +1,11 @@
 /**
- * JLC EasyEDA Pro DSN 转换为 KiCad 兼容 DSN 格式
- * 用于让 JS-PCB 项目能够处理 JLC 导出的 DSN 文件
+ * EasyEDA Pro DSN 归一化（mil 坐标 -> 0.1µm 坐标）
+ * 把嘉立创EDA专业版导出的 DSN 调整为 JS-PCB/dsn2pcb 期望的标准 Specctra DSN
  */
 
-function convertJlcToKicad(jlcContent) {
+function normalizeDsn(dsnContent) {
     // 解析 S-expression
-    const tokens = tokenize(jlcContent);
+    const tokens = tokenize(dsnContent);
     let pos = { index: 0 };
     const tree = parseExpr(tokens, pos);
     
@@ -137,13 +137,13 @@ function convertTree(tree) {
 
 // mil 转 um (1 mil = 25.4 um)
 // JLC DSN: resolution mil 1000，坐标如 1687.45 表示 1687.45 mil
-// KiCad DSN: resolution um 10，坐标需要是 um * 10
+// 标准 Specctra DSN（KiCad 风格）: resolution um 10，坐标是 0.1um
 // 转换公式: mil_value * 25.4 * 10 = mil_value * 254
 function milToUm(milValue) {
     const num = parseFloat(milValue);
     if (isNaN(num)) return milValue;
     // JLC DSN 坐标已经是 mil 值 (如 1687.45 mil)
-    // 转换到 KiCad um*10 格式: 1687.45 * 25.4 * 10 = 428612
+    // 转换到 0.1um 单位: 1687.45 * 25.4 * 10 = 428612
     return Math.round(num * 254);
 }
 
@@ -172,8 +172,10 @@ function convertStructure(node) {
             // 转换边界坐标
             result.push(convertBoundary(child));
         } else if (type === 'via') {
-            // 转换 via 定义
-            result.push(['via', '"Via[0-1]_889:635_um"', '"Via[0-1]_889:0_um"']);
+            // 保留原来的 via 名称（EasyEDA 导出为 via0）。
+            // 这样布线器会使用 DSN 里真实的过孔 padstack 尺寸，
+            // 而不是写死的尺寸，导出 SES 时也能保持与设计一致。
+            result.push(child);
         } else if (type === 'rule') {
             // 转换规则，mil -> um
             result.push(convertRule(child));
@@ -299,20 +301,9 @@ function convertLibrary(node) {
     images.forEach(img => result.push(img));
     padstacks.forEach(ps => result.push(ps));
     
-    // 添加标准 via padstack
-    result.push([
-        'padstack', '"Via[0-1]_889:635_um"',
-        ['shape', ['circle', 'F.Cu', '889']],
-        ['shape', ['circle', 'B.Cu', '889']],
-        ['attach', 'off']
-    ]);
-    result.push([
-        'padstack', '"Via[0-1]_889:0_um"',
-        ['shape', ['circle', 'F.Cu', '889']],
-        ['shape', ['circle', 'B.Cu', '889']],
-        ['attach', 'off']
-    ]);
-    
+    // 不再添加写死的 Via padstack：原始 via0 已在上面的 padstacks 中保留，
+    // structure 的 (via ...) 与 class 的 circuit/use_via 会统一引用它，
+    // 名称、尺寸、层和网络类别约束保持一致。
     return result;
 }
 
@@ -478,31 +469,36 @@ function convertNet(node) {
 // 转换 class
 function convertClass(node) {
     const result = ['class'];
-    
+
     // 类名
     if (node.length > 1) {
         result.push(node[1] === "''" ? 'kicad_default' : node[1]);
     }
-    
-    // 网络列表
-    let netList = '';
+
+    // 网络列表：EasyEDA 写成 (class GND 'GND' ...)，网络名带单引号。
+    // 必须把网络名写回 class 节点，dsn2pcb 才能建立 "网络 -> 线宽/间距" 的映射；
+    // 同时去掉单引号，否则 'GND' 与 net 名 GND 对不上。
+    const netNames = [];
+    const children = [];
     for (let i = 2; i < node.length; i++) {
         const child = node[i];
         if (typeof child === 'string' && !child.startsWith('(')) {
-            if (netList) netList += ' ';
-            netList += child;
+            const name = child.replace(/^'+|'+$/g, '');
+            if (name) netNames.push(name);
         } else if (Array.isArray(child)) {
             if (child[0] === 'circuit') {
-                result.push([
-                    'circuit',
-                    ['use_via', '"Via[0-1]_889:635_um"']
-                ]);
+                // 保留原始 circuit/use_via 定义，避免网络类别使用的过孔
+                // 与 structure/library 中的 padstack 名称和尺寸不一致。
+                children.push(child);
             } else if (child[0] === 'rule') {
-                result.push(convertRule(child));
+                children.push(convertRule(child));
             }
         }
     }
-    
+    // stringify 只会输出数组前面的普通值，所以网络名必须排在子节点之前
+    result.push(...netNames);
+    result.push(...children);
+
     return result;
 }
 
@@ -546,8 +542,8 @@ if (typeof process !== 'undefined' && process.argv) {
     const args = process.argv.slice(2);
     
     if (args.length < 1) {
-        console.log('用法: node jlc2kicad.js <输入.dsn> [输出.dsn]');
-        console.log('将 JLC EasyEDA Pro 导出的 DSN 文件转换为 KiCad 兼容格式');
+        console.log('用法: node dsn-normalizer.js <输入.dsn> [输出.dsn]');
+        console.log('将嘉立创EDA专业版导出的 DSN 归一化为 JS-PCB 可用的标准 Specctra DSN');
         process.exit(1);
     }
     
@@ -556,21 +552,21 @@ if (typeof process !== 'undefined' && process.argv) {
     
     try {
         const content = fs.readFileSync(inputFile, 'utf-8');
-        const converted = convertJlcToKicad(content);
+        const converted = normalizeDsn(content);
         fs.writeFileSync(outputFile, converted, 'utf-8');
-        console.log(`转换完成: ${outputFile}`);
+        console.log(`归一化完成: ${outputFile}`);
     } catch (err) {
-        console.error('转换失败:', err.message);
+        console.error('归一化失败:', err.message);
         process.exit(1);
     }
 }
 
 // 导出供浏览器使用
 if (typeof window !== 'undefined') {
-    window.convertJlcToKicad = convertJlcToKicad;
+    window.normalizeDsn = normalizeDsn;
 }
 
 // 导出供模块使用
 if (typeof module !== 'undefined') {
-    module.exports = { convertJlcToKicad };
+    module.exports = { normalizeDsn };
 }

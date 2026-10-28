@@ -362,6 +362,42 @@ svg {
 .modal-body p {
 	margin: 0 0 10px;
 }
+.auto-import-option {
+	display: flex;
+	align-items: flex-start;
+	gap: 6px;
+	margin-top: 12px;
+	color: var(--muted);
+}
+#go.stop-mode {
+	background: #b45309;
+	border-color: #f59e0b;
+}
+.progress-area {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	padding: 8px 12px;
+	border-top: 1px solid var(--border);
+}
+.progress-track {
+	flex: 1;
+	height: 7px;
+	border-radius: 8px;
+	background: #1c2735;
+	overflow: hidden;
+}
+#progress-fill {
+	height: 100%;
+	width: 0;
+	background: var(--primary);
+	transition: width 0.2s;
+}
+#progress-text {
+	white-space: nowrap;
+	color: var(--muted);
+	font-size: 11px;
+}
 .hidden-option {
 	display: none;
 }

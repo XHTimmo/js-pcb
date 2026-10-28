@@ -15,9 +15,9 @@ var jspcbUi = (function () {
 		const patterns = [
 			[/^\[采样 (\d+)\/(\d+)\] 开始布线\.\.\.$/, 'log.sampleStart'],
 			[/^\[采样 (\d+)\/(\d+)\] 布线失败，增加量化精度重试$/, 'log.sampleFail'],
-			[/^\[采样 (\d+)\/(\d+)\] 完成! 耗时: (.+)s, 代价: (.+)$/, 'log.sampleDone'],
+			[/^\[采样 (\d+)\/(\d+)\] 完成! 耗时: (.+)s, 代价: (.+)$/, 'log.legacySampleDone'],
 			[/^>>> 发现更优解 \(代价: (.+)\)$/, 'log.better'],
-			[/^所有采样完成。最佳代价: (.+)$/, 'log.allDone'],
+			[/^所有采样完成。最佳代价: (.+)$/, 'log.legacyAllDone'],
 		];
 		for (const [pattern, key] of patterns) {
 			const match = message.match(pattern);
@@ -43,6 +43,7 @@ var jspcbUi = (function () {
 			button.setAttribute('data-i18n-aria-label', key);
 			button.textContent = symbol;
 			button.addEventListener('click', function () {
+				if (input.disabled) return;
 				if (direction > 0) input.stepUp();
 				else input.stepDown();
 				input.dispatchEvent(new Event('input', { bubbles: true }));
@@ -94,5 +95,53 @@ var jspcbUi = (function () {
 		}
 	});
 
-	return { formatLog: formatLog };
+	const confirmation = document.getElementById('confirm_modal');
+	let pendingConfirmation = null;
+	function cancelImportConfirmation() {
+		if (pendingConfirmation) pendingConfirmation(false);
+	}
+	function confirmImport(routed, total) {
+		cancelImportConfirmation();
+		return new Promise(function (resolve) {
+			const previousFocus = document.activeElement;
+			const no = document.getElementById('confirm_no');
+			const yes = document.getElementById('confirm_yes');
+			function updateText() {
+				document.getElementById('confirm_text').innerText = t('toast.partialConfirm', routed, total);
+			}
+			function complete(accepted) {
+				confirmation.hidden = true;
+				pendingConfirmation = null;
+				no.onclick = null;
+				yes.onclick = null;
+				document.removeEventListener('keydown', onKey);
+				document.removeEventListener('jspcb-lang-change', updateText);
+				if (previousFocus && !previousFocus.disabled) previousFocus.focus();
+				resolve(accepted);
+			}
+			function onKey(event) {
+				if (event.key === 'Escape') complete(false);
+				if (event.key === 'Tab') {
+					event.preventDefault();
+					(document.activeElement === no ? yes : no).focus();
+				}
+			}
+			pendingConfirmation = complete;
+			no.onclick = function () {
+				complete(false);
+			};
+			yes.onclick = function () {
+				complete(true);
+			};
+			confirmation.onclick = function (event) {
+				if (event.target === confirmation) complete(false);
+			};
+			document.addEventListener('keydown', onKey);
+			document.addEventListener('jspcb-lang-change', updateText);
+			updateText();
+			confirmation.hidden = false;
+			no.focus();
+		});
+	}
+	return { formatLog: formatLog, confirmImport: confirmImport, cancelImportConfirmation: cancelImportConfirmation };
 })();

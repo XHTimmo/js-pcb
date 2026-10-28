@@ -9,9 +9,10 @@
 var js_pcb = js_pcb || {};
 (function()
 {
-	function dsn2pcb(dsn, gap)
+	function dsn2pcb(dsn, gap, extra_gap)
 	{
 		let EOF = -1;
+		extra_gap = extra_gap || 0;
 		let stream = [dsn, 0];
 
 		//peek next char from stream
@@ -57,7 +58,7 @@ var js_pcb = js_pcb || {};
 			for (;;)
 			{
 				let b = peek(stream);
-				if (b === '\t' || b === '\n' || b === '\r' || b === ' ' || b === ')') break;
+				if (b === '\t' || b === '\n' || b === '\r' || b === ' ' || b === ')' || b === '(') break;
 				s += get(stream);
 			}
 			return s;
@@ -69,7 +70,9 @@ var js_pcb = js_pcb || {};
 			for (;;)
 			{
 				let b = peek(stream);
-				if (b === '\t' || b === '\n' || b === '\r' || b === ' ' || b === ')') break;
+				// '(' 也作为分隔符：EasyEDA 导出的 DSN 会出现 `(rule(clear 6.05))`
+				// 这类节点名与子节点之间没有空格的写法，若不在此处断开会把整个树解析错位。
+				if (b === '\t' || b === '\n' || b === '\r' || b === ' ' || b === ')' || b === '(') break;
 				s += get(stream);
 			}
 			return [s, []];
@@ -81,7 +84,7 @@ var js_pcb = js_pcb || {};
 			for (;;)
 			{
 				let b = peek(stream);
-				if (b === '"') break;
+				if (b === '"' || b === EOF) break;
 				s += get(stream);
 			}
 			return [s, []];
@@ -175,6 +178,9 @@ var js_pcb = js_pcb || {};
 		let structure_root = search_tree(tree, "structure");
 		const units = 1000.0;
 		let num_layers = 0;
+		let layer_index = new Map();
+		// 每个 boundary path 单独保存，支持凹形板框和内部挖槽/开孔
+		let boundary_paths = [];
 		let minx = 1000000.0;
 		let miny = 1000000.0;
 		let maxx = -1000000.0;
@@ -183,7 +189,11 @@ var js_pcb = js_pcb || {};
 		let default_via = "Via[0-1]_600:400_um";
 		for (let structure_node of structure_root[1])
 		{
-			if (structure_node[0] === "layer") num_layers++;
+			if (structure_node[0] === "layer")
+			{
+				layer_index.set(structure_node[1][0][0], num_layers);
+				num_layers++;
+			}
 			else if (structure_node[0] === "via")
 			{
 				for (let via_node of structure_node[1])
@@ -203,7 +213,7 @@ var js_pcb = js_pcb || {};
 							|| rule_node[0] === "clearance")
 							&& rule_node[1].length == 1)
 					{
-						default_rule[1] = parseFloat(rule_node[1][0]) / (2 * units);
+						default_rule[1] = parseFloat(rule_node[1][0]) / units;
 					}
 				}
 			}
@@ -213,15 +223,18 @@ var js_pcb = js_pcb || {};
 				{
 					if (boundary_node[0] === "path")
 					{
+						let path_points = [];
 						for (let cords = 2; cords < boundary_node[1].length; cords += 2)
 						{
 							let px = parseFloat(boundary_node[1][cords][0]) / units;
 							let py = parseFloat(boundary_node[1][cords+1][0]) / -units;
+							path_points.push([px, py]);
 							minx = Math.min(px, minx);
 							maxx = Math.max(px, maxx);
 							miny = Math.min(py, miny);
 							maxy = Math.max(py, maxy);
 						}
+						if (path_points.length) boundary_paths.push(path_points);
 					}
 					else if (boundary_node[0] === "rect")
 					{
@@ -229,6 +242,7 @@ var js_pcb = js_pcb || {};
 						let y1 = parseFloat(boundary_node[1][2]) / -units;
 						let x2 = parseFloat(boundary_node[1][3]) / units;
 						let y2 = parseFloat(boundary_node[1][4]) / -units;
+						boundary_paths.push([[x1, y1], [x2, y1], [x2, y2], [x1, y2]]);
 						minx = Math.min(x1, minx);
 						maxx = Math.max(x1, maxx);
 						miny = Math.min(y1, miny);
@@ -240,6 +254,22 @@ var js_pcb = js_pcb || {};
 					}
 				}
 			}
+		}
+
+		function rotated_layer_shapes(rule, pin_angle, instance_angle)
+		{
+			let shapes = rule[4] || [];
+			let result = [];
+			for (let z = 0; z < shapes.length; ++z)
+			{
+				let ls = shapes[z];
+				if (!ls) continue;
+				result[z] = {
+					r: ls.r,
+					points: shape_to_cords(ls.points, pin_angle, instance_angle)
+				};
+			}
+			return result;
 		}
 
 		let library_root = search_tree(tree, "library");
@@ -283,66 +313,85 @@ var js_pcb = js_pcb || {};
 				component_map.set(component_name, the_comp);
 			}
 			else if (library_node[0] === "padstack")
+		{
+			let padstack_name = library_node[1][0][0];
+			let pad_layers = [];
+			let layer_shapes = [];   // 按层号索引：{ r, points }
+			let generic = null;      // 预览用的通用几何（取第一个 shape）
+			let unknown_layer = null;
+
+			for (let i = 1; i < library_node[1].length; ++i)
 			{
-				for (let i = 1; i < library_node[1].length; ++i)
+				let padstack_node = library_node[1][i];
+				if (padstack_node[0] !== "shape") continue;
+				let prim = padstack_node[1][0];
+				if (!prim) continue;
+
+				// 记录这个 shape 所在的层；不同层可以有不同的形状和尺寸
+				let layer_name = (prim[1] && prim[1][0] !== undefined) ? prim[1][0][0] : null;
+				let layer_num = layer_index.get(layer_name);
+				if (layer_name && layer_num === undefined) unknown_layer = layer_name;
+
+				let shape_r = default_rule[0];
+				let shape_points = [];
+				let type = prim[0];
+				if (type === "circle")
 				{
-					let padstack_node = library_node[1][i];
-					if (padstack_node[0] === "shape")
+					shape_r = parseFloat(prim[1][1][0]) / (2 * units);
+				}
+				else if (type === "path")
+				{
+					shape_r = parseFloat(prim[1][1][0]) / (2 * units);
+					let x1 = parseFloat(prim[1][2][0]);
+					let y1 = parseFloat(prim[1][3][0]);
+					let x2 = parseFloat(prim[1][4][0]);
+					let y2 = parseFloat(prim[1][5][0]);
+					if (x1 != 0.0 || x2 != 0.0 || y1 != 0.0 || y2 != 0.0)
 					{
-						let points = [];
-						let the_rule = default_rule.slice();
-						if (padstack_node[1][0][0] === "circle")
-						{
-							the_rule[0] = parseFloat(padstack_node[1][0][1][1][0]) / (2 * units);
-						}
-						else if (padstack_node[1][0][0] === "path")
-						{
-							the_rule[0] = parseFloat(padstack_node[1][0][1][1][0]) / (2 * units);
-							let x1 = parseFloat(padstack_node[1][0][1][2][0]);
-							let y1 = parseFloat(padstack_node[1][0][1][3][0]);
-							let x2 = parseFloat(padstack_node[1][0][1][4][0]);
-							let y2 = parseFloat(padstack_node[1][0][1][5][0]);
-							if (x1 != 0.0
-								|| x2 != 0.0
-								|| y1 != 0.0
-								|| y2 != 0.0)
-							{
-								x1 /= units;
-								y1 /= -units;
-								x2 /= units;
-								y2 /= -units;
-								points.push([x1, y1]);
-								points.push([x2, y2]);
-							}
-						}
-						else if (padstack_node[1][0][0] === "rect")
-						{
-							the_rule[0] = 0.0;
-							let x1 = parseFloat(padstack_node[1][0][1][1][0]) / units;
-							let y1 = parseFloat(padstack_node[1][0][1][2][0]) / -units;
-							let x2 = parseFloat(padstack_node[1][0][1][3][0]) / units;
-							let y2 = parseFloat(padstack_node[1][0][1][4][0]) / -units;
-							points.push([x1, y1]);
-							points.push([x2, y1]);
-							points.push([x2, y2]);
-							points.push([x1, y2]);
-							points.push([x1, y1]);
-						}
-						else if (padstack_node[1][0][0] === "polygon")
-						{
-							the_rule[0] = 0.0;
-							for (let i = 2; i < padstack_node[1][0][1].length; i += 2)
-							{
-								let x1 = parseFloat(padstack_node[1][0][1][i][0]) / units;
-								let y1 = parseFloat(padstack_node[1][0][1][i + 1][0]) / -units;
-								points.push([x1, y1]);
-							}
-							points.push(points[0]);
-						}
-						the_rule[2] = points;
-						rule_map.set(library_node[1][0][0], the_rule);
+						shape_points.push([x1 / units, y1 / -units]);
+						shape_points.push([x2 / units, y2 / -units]);
 					}
 				}
+				else if (type === "rect")
+				{
+					shape_r = 0.0;
+					let x1 = parseFloat(prim[1][1][0]) / units;
+					let y1 = parseFloat(prim[1][2][0]) / -units;
+					let x2 = parseFloat(prim[1][3][0]) / units;
+					let y2 = parseFloat(prim[1][4][0]) / -units;
+					shape_points.push([x1, y1], [x2, y1], [x2, y2], [x1, y2], [x1, y1]);
+				}
+				else if (type === "polygon")
+				{
+					shape_r = 0.0;
+					for (let j = 2; j < prim[1].length; j += 2)
+					{
+						let x1 = parseFloat(prim[1][j][0]) / units;
+						let y1 = parseFloat(prim[1][j + 1][0]) / -units;
+						shape_points.push([x1, y1]);
+					}
+					if (shape_points.length) shape_points.push(shape_points[0]);
+				}
+
+				let entry = { r: shape_r, points: shape_points };
+				if (layer_num !== undefined)
+				{
+					layer_shapes[layer_num] = entry;
+					if (pad_layers.indexOf(layer_num) === -1) pad_layers.push(layer_num);
+				}
+				if (!generic) generic = entry;
+			}
+
+			if (generic)
+			{
+				let pad_rule = [generic.r, default_rule[1], generic.points, pad_layers, layer_shapes];
+				rule_map.set(padstack_name, pad_rule);
+				if (pad_layers.length === 0)
+				{
+					console.warn('[jspcb] padstack "' + padstack_name + '" has no recognized copper layer' +
+						(unknown_layer ? ' (' + unknown_layer + ')' : '') + '; pins using it will not be routable');
+				}
+			}
 			}
 		}
 
@@ -376,6 +425,7 @@ var js_pcb = js_pcb || {};
 		for (let value of instance_map.values())
 		{
 			let component = component_map.get(value[1]);
+			if (component === undefined) continue;
 			for (let pin of component[1].values())
 			{
 				let m_x = pin[2];
@@ -386,9 +436,11 @@ var js_pcb = js_pcb || {};
 				let px = (c * m_x - s * m_y) + value[3];
 				let py = (s * m_x + c * m_y) + value[4];
 				let pin_rule = rule_map.get(pin[1]);
+				if (pin_rule === undefined) pin_rule = default_rule;
 				let tp = [px, py, 0.0];
 				let cords = shape_to_cords(pin_rule[2], pin[4], value[5]);
-				all_terminals.push([pin_rule[0], pin_rule[1], tp, cords]);
+				let layer_cords = rotated_layer_shapes(pin_rule, pin[4], value[5]);
+				all_terminals.push([pin_rule[0], pin_rule[1] + extra_gap, tp, cords, pin_rule[3] || [], layer_cords]);
 				minx = Math.min(px, minx);
 				maxx = Math.max(px, maxx);
 				miny = Math.min(py, miny);
@@ -415,7 +467,7 @@ var js_pcb = js_pcb || {};
 							}
 							if (dims[0] === "clearance")
 							{
-								the_circuit[1][1] = parseFloat(dims[1][0][0]) / (2 * units);
+								the_circuit[1][1] = parseFloat(dims[1][0][0]) / units;
 							}
 						}
 					}
@@ -453,8 +505,11 @@ var js_pcb = js_pcb || {};
 							let instance_name = pin_info[0];
 							let pin_name = pin_info[1];
 							let instance = instance_map.get(instance_name);
+							if (instance === undefined) continue;
 							let component = component_map.get(instance[1]);
+							if (component === undefined) continue;
 							let pin = component[1].get(pin_name);
+							if (pin === undefined) continue;
 							let m_x = pin[2];
 							let m_y = pin[3];
 							if (instance[2] !== "front") m_x = -m_x;
@@ -465,15 +520,20 @@ var js_pcb = js_pcb || {};
 							let pin_rule = rule_map.get(pin[1]);
 							let tp = [px, py, 0.0];
 							let cords = shape_to_cords(pin_rule[2], pin[4], instance[5]);
-							let term = [pin_rule[0], pin_rule[1], tp, cords];
+							let layer_cords = rotated_layer_shapes(pin_rule, pin[4], instance[5]);
+							let term = [pin_rule[0], pin_rule[1] + extra_gap, tp, cords, pin_rule[3] || [], layer_cords];
 							the_terminals.push(term);
 							let index = term_index(all_terminals, term);
 							if (index !== -1) all_terminals.splice(index, 1);
 						}
 						let circuit = circuit_map.get(network_node[1][0][0]);
+						// 某些 DSN 不写 class（或 class 名与 net 名不一致），
+						// 直接取 circuit[1] 会抛异常导致整个布线线程静默退出。
+						if (circuit === undefined) circuit = [default_via, default_rule.slice()];
 						let net_rule = circuit[1];
 						let via_rule = rule_map.get(circuit[0]);
-						the_tracks.push([net_rule[0], via_rule[0], net_rule[1], the_terminals, []]);
+						if (via_rule === undefined) via_rule = default_rule;
+						the_tracks.push([net_rule[0], via_rule[0], net_rule[1] + extra_gap, the_terminals, []]);
 					}
 				}
 			}
@@ -489,10 +549,21 @@ var js_pcb = js_pcb || {};
 				terminal[2][1] -= (miny - gap);
 			}
 		}
+		// 板框与焊盘使用同一个坐标原点，供预览绘制外框
+		for (let path of boundary_paths)
+		{
+			for (let p of path)
+			{
+				p[0] -= (minx - gap);
+				p[1] -= (miny - gap);
+			}
+		}
 		return [[Math.trunc(maxx - minx + (gap * 2) + 0.5),
 			 	Math.trunc(maxy - miny + (gap * 2) + 0.5),
 				num_layers],
-				the_tracks];
+				the_tracks,
+				boundary_paths,
+				default_rule[1] + extra_gap]; // 板框到铜皮的间距
 	}
 
 	js_pcb.dsn2pcb = dsn2pcb;

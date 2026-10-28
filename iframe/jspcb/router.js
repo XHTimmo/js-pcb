@@ -26,6 +26,7 @@ var js_pcb = js_pcb || {};
 	//aabb of terminals
 	function aabb_terminals(terms, quantization)
 	{
+		if (!terms || !terms.length) return [0, [0, 0, 0, 0]];
 		let minx = (Math.trunc(terms[0][2][0]) / quantization) * quantization;
 		let miny = (Math.trunc(terms[0][2][1]) / quantization) * quantization;
 		let maxx = ((Math.trunc(terms[0][2][0]) + (quantization - 1)) / quantization) * quantization;
@@ -44,19 +45,37 @@ var js_pcb = js_pcb || {};
 		return [(maxx - minx) * (maxy - miny), [minx, miny, maxx, maxy]];
 	}
 
-	//set class
+	// 无碰撞的默认 key（节点坐标异常时使用）。
+	function default_node_key(n)
+	{
+		return 'oob:' + n[0] + ',' + n[1] + ',' + n[2];
+	}
+
+	// NodeSet 使用调用方提供的 key 函数。Pcb 会传入基于板子尺寸、
+	// 带范围校验的数值 key；超出范围或非整数坐标自动退化为字符串 key，
+	// 避免固定基数编码在超大坐标/超精度时发生碰撞。
 	class NodeSet
 	{
-		constructor(init)
+		constructor(init, keyFn)
 		{
+			this._key = keyFn || default_node_key;
 			if (init === undefined) this._data = new Map();
-			else this._data = new Map(init._data.entries());
+			else if (init instanceof NodeSet)
+			{
+				this._data = new Map(init._data);
+				this._key = init._key;
+			}
+			else
+			{
+				this._data = new Map();
+				for (let n of init) this._data.set(this._key(n), n);
+			}
 			this.size = this._data.size;
 		}
 
 		add(n)
 		{
-			let k = n.toString();
+			let k = this._key(n);
 			if (!this._data.has(k))
 			{
 				this._data.set(k, n);
@@ -66,7 +85,7 @@ var js_pcb = js_pcb || {};
 
 		has(n)
 		{
-			return this._data.has(n.toString());
+			return this._data.has(this._key(n));
 		}
 
 		[Symbol.iterator]()
@@ -98,6 +117,25 @@ var js_pcb = js_pcb || {};
 			this.m_netlist = [];
 			this.m_nodes = new Uint32Array(this.m_stride * this.m_depth);
 			this.m_via_vectors = [[[0, 0, -1], [0, 0, 1]], [[0, 0, -1], [0, 0, 1]]];
+			// 使用板子尺寸作为编码基数：key = (z * height + y) * width + x。
+			// 所有节点都在 [0,width) x [0,height) x [0,depth) 内，因此不会碰撞；
+			// 越界/非整数节点退化为字符串 key（Map 的 number/string key 不会互相冲突）。
+			const w_key = this.m_width;
+			const h_key = this.m_height;
+			const d_key = this.m_depth;
+			const numeric_safe = (w_key > 0 && h_key > 0 && d_key > 0 &&
+				w_key * h_key * d_key <= Number.MAX_SAFE_INTEGER);
+			this.m_node_key = function(n)
+			{
+				const x = n[0], y = n[1], z = n[2];
+				if (numeric_safe &&
+					Number.isInteger(x) && Number.isInteger(y) && Number.isInteger(z) &&
+					x >= 0 && x < w_key && y >= 0 && y < h_key && z >= 0 && z < d_key)
+				{
+					return (z * h_key + y) * w_key + x;
+				}
+				return default_node_key(n);
+			};
 		}
 
 		//add net
@@ -106,6 +144,30 @@ var js_pcb = js_pcb || {};
 			let track_radius, via_radius, track_gap, terminals, paths;
 			[track_radius, via_radius, track_gap, terminals, paths] = track;
 			this.m_netlist.push(new Net(track_radius, via_radius, track_gap, terminals, this));
+		}
+
+		//add board outline as walls on every layer, so traces/vias keep
+		//clearance from the board edge (points are in board space)
+		add_wall(points, gap)
+		{
+			if (!points || !points.length) return;
+			// 支持多个 boundary path（外框 + 挖槽/开孔）
+			if (Array.isArray(points[0]) && points[0].length && Array.isArray(points[0][0]))
+			{
+				for (let poly of points) this.add_wall(poly, gap);
+				return;
+			}
+			if (points.length < 2) return;
+			for (let i = 0; i < points.length; ++i)
+			{
+				let a = points[i];
+				let b = points[(i + 1) % points.length];
+				if (a[0] === b[0] && a[1] === b[1]) continue;
+				for (let z = 0; z < this.m_depth; ++z)
+				{
+					this.m_layers.add_line([a[0], a[1], z], [b[0], b[1], z], 0.0, gap);
+				}
+			}
 		}
 
 		//remove netlist from board
@@ -117,6 +179,11 @@ var js_pcb = js_pcb || {};
 		//attempt to route board within time
 		route(timeout)
 		{
+			// timeout 单位为秒，<=0 表示不限制。
+			// 原实现把超时检测注释掉了，导致板子复杂时会一直算下去没有任何输出。
+			this.m_timedout = false;
+			this.m_deadline = (timeout > 0) ? Date.now() + timeout * 1000 : Infinity;
+			this.m_last_output_time = 0;
 			this.remove_netlist();
 			this.unmark_distances();
 			this.reset_areas();
@@ -127,13 +194,43 @@ var js_pcb = js_pcb || {};
 				return n1.m_area - n2.m_area;
 			});
 			let hoisted_nets = new Set();
+			// 记录每个网络失败的次数。原实现会无限地“重排 + 重试”，
+			// 一旦某个网络在当前板框/规则下布不通，整块板就会永远卡住。
+			// 达到上限后跳过该网络，先保证其余网络能布完。
+			let attempts = new Map();
+			const max_attempts = this.m_max_attempts || 4;
 			let index = 0;
 	//		let start_time = std::chrono::high_resolution_clock::now();
 			while (index < this.m_netlist.length)
 			{
-				if (this.m_netlist[index].route()) index++;
+				if (Date.now() >= this.m_deadline)
+				{
+					this.m_timedout = true;
+					break;
+				}
+				const current_net = this.m_netlist[index];
+				if ((attempts.get(current_net) || 0) >= max_attempts)
+				{
+					// 放弃该网络，保留其它已布通的网络
+					postMessage({
+						type: 'log',
+						key: 'log.netSkip',
+						args: [index + 1, this.m_netlist.length, max_attempts]
+					});
+					index++;
+					continue;
+				}
+				if (current_net.route()) index++;
 				else
 				{
+					const tries = (attempts.get(current_net) || 0) + 1;
+					attempts.set(current_net, tries);
+					if (this.m_timedout) break;
+					postMessage({
+						type: 'log',
+						key: 'log.netRetry',
+						args: [index + 1, this.m_netlist.length, current_net.m_terminals.length, tries]
+					});
 					if (index === 0)
 					{
 						this.reset_areas();
@@ -169,17 +266,57 @@ var js_pcb = js_pcb || {};
 	//			let end_time = std::chrono::high_resolution_clock::now();
 	//			std::chrono::duration<float> elapsed = end_time - start_time;
 	//			if (elapsed.count() >= timeout) return false;
-				if (this.m_verbosity >= 1) postMessage(this.output_pcb());
+				// 约 4 次/秒回传进度和当前布线快照。
+				// 进度用进度条显示，日志里不再刷屏“布线进度”。
+				let now = Date.now();
+				if ((now - this.m_last_output_time) >= 250)
+				{
+					this.m_last_output_time = now;
+					let routed = 0;
+					let total = 0;
+					for (let net of this.m_netlist)
+					{
+						if (net.m_radius === 0.0) continue;
+						total++;
+						if (net.m_paths.length) routed++;
+					}
+					postMessage({type: 'progress', done: routed, total: total});
+					if (this.m_verbosity >= 1) postMessage(this.output_pcb());
+				}
 			}
-			return true;
+			return !this.m_timedout;
 		}
 
 		//cost of board in complexity terms
 		cost()
 		{
+			// 未布通的网络必须施加极大的惩罚，否则“一条线都没布”的板子
+			// 反而因为总长度最小而被当成最优解（原实现就是这个行为）。
 			let sum = 0;
-			for (let net of this.m_netlist) for (let path of net.m_paths) sum += path.length;
-			return sum;
+			let unrouted = 0;
+			for (let net of this.m_netlist)
+			{
+				if (net.m_radius === 0.0) continue; // 无电气连接的虚拟网络
+				if (net.m_paths.length === 0) { unrouted++; continue; }
+				for (let path of net.m_paths) sum += path.length;
+			}
+			return sum + unrouted * 1e9;
+		}
+
+		//number of electrically connected nets that have no path
+		unrouted_nets()
+		{
+			let count = 0;
+			for (let net of this.m_netlist) if (net.m_radius > 0.0 && net.m_paths.length === 0) count++;
+			return count;
+		}
+
+		//number of electrically connected nets
+		connected_nets()
+		{
+			let count = 0;
+			for (let net of this.m_netlist) if (net.m_radius > 0.0) count++;
+			return count;
 		}
 
 		//increase area quantization
@@ -316,21 +453,27 @@ var js_pcb = js_pcb || {};
 			let distance = 1;
 			let frontier = new NodeSet(starts);
 			let vias_nodes = new Map();
+			let ticks = 0;
 			while (frontier.size || vias_nodes.size)
 			{
+				if (((ticks++ & 0x3ff) === 0) && Date.now() >= this.m_deadline) return false;
 				for (let node of frontier) sn.call(this, node, distance);
 				if (ends.every((node) => { return gn.call(this, node); })) break;
-				let new_nodes = new NodeSet();
+				let new_nodes = new NodeSet(undefined, this.m_node_key);
+				let inner = 0;
 				for (let node of frontier)
 				{
+					if (((inner++ & 0x3ff) === 0) && Date.now() >= this.m_deadline) return false;
 					for (let new_node of ans.call(this, anm.call(this, vec, node), node, radius, gap))
 					{
 						new_nodes.add(new_node);
 					}
 				}
-				let new_vias_nodes = new NodeSet();
+				let new_vias_nodes = new NodeSet(undefined, this.m_node_key);
+				inner = 0;
 				for (let node of frontier)
 				{
+					if (((inner++ & 0x3ff) === 0) && Date.now() >= this.m_deadline) return false;
 					for (let new_node of ans.call(this, anm.call(this, via_vectors, node), node, via, gap))
 					{
 						new_vias_nodes.add(new_node);
@@ -346,6 +489,7 @@ var js_pcb = js_pcb || {};
 				frontier = new_nodes;
 				distance++;
 			}
+			return true;
 		}
 
 		//set all grid values back to 0
@@ -387,6 +531,30 @@ var js_pcb = js_pcb || {};
 		}
 	}
 
+	// 连通性：只允许焊盘实际存在的层。缺失层信息时返回空数组，
+	// 该网络会被判定为无法布线，避免把单层焊盘误当成跨层可连接。
+	function terminal_connect_layers(node)
+	{
+		return (node[4] && node[4].length) ? node[4] : [];
+	}
+
+	// 碰撞：层信息缺失时保守地阻挡所有层，避免走线穿过未知焊盘。
+	function terminal_collision_layers(node, depth)
+	{
+		let layers = node[4];
+		if (layers && layers.length) return layers;
+		let all = [];
+		for (let z = 0; z < depth; ++z) all.push(z);
+		return all;
+	}
+
+	// 焊盘在第 z 层的实际几何（多层 padstack 可能每层形状/尺寸不同）
+	function terminal_layer_shape(node, z)
+	{
+		let shapes = node[5];
+		return (shapes && shapes[z]) ? shapes[z] : null;
+	}
+
 	//scale terminals for resolution of grid
 	function scale_terminals(terms, res)
 	{
@@ -400,6 +568,18 @@ var js_pcb = js_pcb || {};
 			{
 				p[0] *= res;
 				p[1] *= res;
+			}
+			// 每层独立的焊盘几何
+			let layer_shapes = term[5] || [];
+			for (let ls of layer_shapes)
+			{
+				if (!ls) continue;
+				ls.r *= res;
+				for (let p of ls.points)
+				{
+					p[0] *= res;
+					p[1] *= res;
+				}
 			}
 		}
 	}
@@ -438,15 +618,22 @@ var js_pcb = js_pcb || {};
 		//add terminal entries to spacial cache
 		add_terminal_collision_lines()
 		{
+			let depth = this.m_pcb.m_depth;
 			for (let node of this.m_terminals)
 			{
-				let r, g, x, y, shape;
-				[r, g, [x, y, ,], shape] = node;
-				if (!shape.length)
-					this.m_pcb.m_layers.add_line([x, y, 0], [x, y, this.m_pcb.m_depth - 1], r, g);
-				else
+				let g, x, y;
+				[, g, [x, y, ,]] = node;
+				let layers = terminal_collision_layers(node, depth);
+				for (let z of layers)
 				{
-					for (let z = 0; z < this.m_pcb.m_depth; ++z)
+					let layer_shape = terminal_layer_shape(node, z);
+					let r = layer_shape ? layer_shape.r : node[0];
+					let shape = layer_shape ? layer_shape.points : node[3];
+					if (!shape.length)
+					{
+						this.m_pcb.m_layers.add_line([x, y, z], [x, y, z], r, g);
+					}
+					else
 					{
 						let p1 = [x + shape[0][0], y + shape[0][1], z];
 						for (let i = 1; i < shape.length; ++i)
@@ -463,15 +650,22 @@ var js_pcb = js_pcb || {};
 		//remove terminal entries from spacial cache
 		sub_terminal_collision_lines()
 		{
+			let depth = this.m_pcb.m_depth;
 			for (let node of this.m_terminals)
 			{
-				let r, g, x, y, shape;
-				[r, g, [x, y, ,], shape] = node;
-				if (!shape.length)
-					this.m_pcb.m_layers.sub_line([x, y, 0], [x, y, this.m_pcb.m_depth - 1], r, g);
-				else
+				let g, x, y;
+				[, g, [x, y, ,]] = node;
+				let layers = terminal_collision_layers(node, depth);
+				for (let z of layers)
 				{
-					for (let z = 0; z < this.m_pcb.m_depth; ++z)
+					let layer_shape = terminal_layer_shape(node, z);
+					let r = layer_shape ? layer_shape.r : node[0];
+					let shape = layer_shape ? layer_shape.points : node[3];
+					if (!shape.length)
+					{
+						this.m_pcb.m_layers.sub_line([x, y, z], [x, y, z], r, g);
+					}
+					else
 					{
 						let p1 = [x + shape[0][0], y + shape[0][1], z];
 						for (let i = 1; i < shape.length; ++i)
@@ -558,8 +752,14 @@ var js_pcb = js_pcb || {};
 			let via_vectors = this.m_pcb.m_via_vectors;
 			let path = [];
 			let path_node = end_node;
+			let steps = 0;
 			for (;;)
 			{
+				if (((steps++ & 0x3ff) === 0) && Date.now() >= this.m_pcb.m_deadline)
+				{
+					this.m_pcb.m_timedout = true;
+					return [[], false];
+				}
 				path.push(path_node);
 				let nearer_nodes = [];
 				for (let node of this.m_pcb.all_not_shorting(
@@ -593,11 +793,36 @@ var js_pcb = js_pcb || {};
 			if (this.m_radius === 0.0) return true;
 			this.m_paths = [];
 			this.sub_terminal_collision_lines();
-			let visited = new NodeSet();
+			let visited = new NodeSet(undefined, this.m_pcb.m_node_key);
 			for (let index = 1; index < this.m_terminals.length; ++index)
 			{
+				// 单个多引脚网络可能需要很久，这里按引脚对检查超时，避免外层循环被长时间卡住。
+				if (Date.now() >= this.m_pcb.m_deadline)
+				{
+					this.m_pcb.m_timedout = true;
+					this.remove();
+					return false;
+				}
 				let ends = [];
-				for (let z = 0; z < this.m_pcb.m_depth; ++z)
+				// 目标焊盘只在其实际存在的层上可达；缺少层信息时拒绝布线，
+				// 而不是退化为“所有层都可连接”。
+				let target_layers = terminal_connect_layers(this.m_terminals[index]);
+				let start_layers = terminal_connect_layers(this.m_terminals[index-1]);
+				if (!target_layers.length || !start_layers.length)
+				{
+					if (!this.m_layerErrorLogged)
+					{
+						this.m_layerErrorLogged = true;
+						postMessage({
+							type: 'log',
+							key: 'log.padLayerMissing',
+							args: [this.m_terminals.length]
+						});
+					}
+					this.remove();
+					return false;
+				}
+				for (let z of target_layers)
 				{
 					let x = Math.trunc(this.m_terminals[index][2][0]+0.5);
 					let y = Math.trunc(this.m_terminals[index][2][1]+0.5);
@@ -605,14 +830,22 @@ var js_pcb = js_pcb || {};
 				}
 				let search = ends.find(function(node) { return visited.has(node); });
 				if (search !== undefined) continue;
-				for (let z = 0; z < this.m_pcb.m_depth; ++z)
+				// 起点焊盘同理：只在它自己的层上作为搜索起点
+				for (let z of start_layers)
 				{
 					let x = Math.trunc(this.m_terminals[index-1][2][0]+0.5);
 					let y = Math.trunc(this.m_terminals[index-1][2][1]+0.5);
 					visited.add([x, y, z]);
 				}
-				this.m_pcb.mark_distances(this.m_pcb.m_routing_flood_vectors, this.m_radius, this.m_via, this.m_gap,
+				let filled = this.m_pcb.mark_distances(this.m_pcb.m_routing_flood_vectors, this.m_radius, this.m_via, this.m_gap,
 					 						visited, ends);
+				if (!filled)
+				{
+					this.m_pcb.m_timedout = true;
+					this.m_pcb.unmark_distances();
+					this.remove();
+					return false;
+				}
 				let sorted_ends = [];
 				for (let node of ends) sorted_ends.push([this.m_pcb.get_node(node), node]);
 				sorted_ends.sort(function(s1, s2) { return s1[0] - s2[0]; });
@@ -620,6 +853,7 @@ var js_pcb = js_pcb || {};
 				this.m_pcb.unmark_distances();
 				if (!result[1])
 				{
+					if (Date.now() >= this.m_pcb.m_deadline) this.m_pcb.m_timedout = true;
 					this.remove();
 					return false;
 				}
@@ -644,8 +878,10 @@ var js_pcb = js_pcb || {};
 			track.push(this.m_gap*scale);
 			track.push(this.m_terminals.map(function(t)
 			{
+				// 第 5 项保留焊盘所在层，供预览区分顶层/底层/通孔焊盘
 				return [t[0]*scale, t[1]*scale, [t[2][0]*scale, t[2][1]*scale, t[2][2]],
-					t[3].map(function(n) { return [n[0]*scale, n[1]*scale]; })];
+					t[3].map(function(n) { return [n[0]*scale, n[1]*scale]; }),
+					t[4] || []];
 			}));
 			track.push(this.m_paths.map(function(path)
 			{

@@ -7,6 +7,9 @@
 - **中英文界面**：打开时跟随嘉立创EDA或浏览器语言，也可通过窗口右上角的语言按钮切换。
 - **界面展示**：蓝色主题、参数步进按钮、底部日志及关于弹窗；日志和历史记录随语言切换更新。
 - **历史记录**：自动保存布线历史，支持导出历史版本的 SES 文件。
+- **布线控制**：显示实时进度，支持停止和重新开始；超时或无法布通的网络会停止重试并保留可用结果。
+- **导入方式**：保留手动导入，可选择开启“完成后自动导入”（默认关闭）；部分布通或超时结果需要确认。
+- **规则兼容**：修复 DSN 解析、间距、过孔尺寸和焊盘层处理，预览及布线支持多路径板框。
 
 ## 使用方法
 
@@ -17,7 +20,7 @@
 5. 点击 **开始布线**。
 6. 等待布线完成，点击 **导入 SES**。
 
-![alt text](images/PixPin_2026-03-05_11-20-38.png)
+![界面示例](images/dialog.jpg)
 
 ## 已知局限性与贡献说明
 
@@ -25,7 +28,8 @@
 
 - 布通率较低，无法完成所有网络的连接。
 - 走线路径不够优化，存在绕线或冗余过孔。
-- 布线速度较慢或超时。
+- 网格布线难以完整表达所有复杂设计规则，导入后仍需检查连接与 DRC。
+- 超时按每次采样计算，默认 3600 秒，0 表示不限制。
 
 本项目的主要目的是**提供一个将自动布线器集成到 JLCEDA Pro 的技术框架与参考实现**。
 
@@ -41,15 +45,19 @@
 
 本次多语言与界面展示改进部分提取并改编自 [PR #1](https://github.com/XHTimmo/js-pcb/pull/1)，感谢原贡献者 **summving <summving@easyeda.com>**（[@easyeda2021](https://github.com/easyeda2021)）。保留历史记录与手动导入/导出流程；详细来源及第三方版权声明见 [NOTICE.md](NOTICE.md)，本次 PR 描述草稿见 [docs/pr-1-ui-backport.md](docs/pr-1-ui-backport.md)。
 
+后续通过 [PR #3](https://github.com/XHTimmo/js-pcb/pull/3) 整合 **summving / @easyeda2021** 的 DSN、布线、焊盘层和过孔修复，同时保留主线的历史记录、手动操作、双语界面与署名。完整来源见 [NOTICE.md](NOTICE.md)。
+
 ## 开发验证
 
 ```bash
 npm ci
 npm run test:ui
+npm run test:routing
+node iframe/jspcb/test_runner.js
 npm run build
 ```
 
-`test:ui` 验证语言加载与界面兼容逻辑。原有 `npm test` 中的 `tests/autorouter/` 测试引用了当前仓库缺失的 `src/autorouter/` 模块，需要另行补齐；构建成功不代表已完成真实 PCB 的布线或 DRC 验证。
+`test:ui` 验证语言加载与界面兼容逻辑，`test:routing` 验证实际布线引擎和 DSN→SES 转换；命令行测试默认读取 `tests/fixtures/` 下的样例，也支持传入 DSN 路径。原有 `npm test` 中的 `tests/autorouter/` 测试引用了当前仓库缺失的 `src/autorouter/` 模块，需要另行补齐；构建成功不代表已完成真实 PCB 的布线或 DRC 验证。
 
 ## 第三方开源组件说明
 

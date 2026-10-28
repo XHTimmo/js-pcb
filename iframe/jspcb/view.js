@@ -1,9 +1,8 @@
-// Preview palette adapted from PR #1 by summving (@easyeda2021); see NOTICE.md.
 'use strict';
 
 var js_pcb = js_pcb || {};
 (function () {
-	function view_pcb(pcb_data, scale, margin) {
+	function view_pcb(pcb_data, scale, margin, boundary) {
 		//Width and height etc
 		let width, height, depth;
 		[width, height, depth] = pcb_data[0];
@@ -77,7 +76,7 @@ var js_pcb = js_pcb || {};
 					.attr('stroke-opacity', 0.9),
 			);
 		}
-		layers.push(pcb.append('g').attr('stroke', 'white'));
+		layers.push(pcb.append('g').attr('stroke', '#c7ccd4'));
 
 		//add tracks
 		for (let track of pcb_data[1]) {
@@ -114,16 +113,24 @@ var js_pcb = js_pcb || {};
 			for (let terminal of terminals) {
 				let terminal_radius, terminal_gap, terminal_x, terminal_y, terminal_z, terminal_shape;
 				[terminal_radius, terminal_gap, [terminal_x, terminal_y, terminal_z], terminal_shape] = terminal;
+				// 按焊盘层着色：顶层淡红色、底层淡蓝色、通孔（多层）淡灰色
+				let terminal_layers = terminal[4] || [];
+				let terminal_color = '#c7ccd4';
+				if (terminal_layers.length === 1) {
+					if (terminal_layers[0] === 0) terminal_color = '#ff9a9a';
+					else if (terminal_layers[0] === 1) terminal_color = '#8ec5ff';
+				}
 				if (!terminal_shape.length) {
 					layers[layers.length - 1]
 						.append('circle')
 						.attr('cx', terminal_x)
 						.attr('cy', terminal_y)
 						.attr('r', terminal_radius)
-						.attr('fill', 'white');
+						.attr('fill', terminal_color);
 				} else if (terminal_shape.length === 2) {
 					layers[layers.length - 1]
 						.append('path')
+						.attr('stroke', terminal_color)
 						.attr('stroke-width', terminal_radius * 2)
 						.attr(
 							'd',
@@ -136,7 +143,7 @@ var js_pcb = js_pcb || {};
 				} else {
 					layers[layers.length - 1]
 						.append('path')
-						.attr('fill', 'white')
+						.attr('fill', terminal_color)
 						.attr(
 							'd',
 							path_func(
@@ -156,10 +163,27 @@ var js_pcb = js_pcb || {};
 							.attr('cx', path[node][0])
 							.attr('cy', path[node][1])
 							.attr('r', via_radius)
-							.attr('fill', 'white');
+							.attr('fill', '#c7ccd4');
 					}
 					terminal_z = path[node][2];
 				}
+			}
+		}
+
+		//draw board outline (板框)
+		if (boundary && boundary.length) {
+			// 兼容单个 path（旧格式）和多个 path（外框 + 挖槽）
+			let outlines = Array.isArray(boundary[0]) && boundary[0].length && Array.isArray(boundary[0][0]) ? boundary : [boundary];
+			for (let outline of outlines) {
+				if (!outline || outline.length < 2) continue;
+				let closed = outline.concat([outline[0]]);
+				pcb.append('path')
+					.attr('d', path_func(closed) + 'Z')
+					.attr('stroke', '#facc15')
+					.attr('stroke-width', 1.2 / scale)
+					.attr('stroke-opacity', 0.9)
+					.attr('stroke-linejoin', 'round')
+					.attr('fill', 'none');
 			}
 		}
 	}

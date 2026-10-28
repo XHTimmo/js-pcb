@@ -11,7 +11,7 @@
 		<script src="/iframe/jspcb/mymath.js"></script>
 		<script src="/iframe/jspcb/view.js"></script>
 		<script src="/iframe/jspcb/dsn2pcb.js"></script>
-		<script src="/iframe/jspcb/jlc2kicad.js"></script>
+		<script src="/iframe/jspcb/dsn-normalizer.js"></script>
 		<script src="/iframe/jspcb/pcb2ses.js"></script>
 	</head>
 	<body>
@@ -40,7 +40,7 @@
 					<div class="btn-group" id="eda_input_group" style="display: none">
 						<button id="load_dsn_eda" type="button" data-i18n="ui.loadDsn">从 EDA 获取 DSN</button>
 					</div>
-					<input type="checkbox" id="jlc_convert" class="hidden-option" checked />
+					<input type="checkbox" id="dsn_normalize" class="hidden-option" checked />
 					<input id="scale" type="number" class="hidden-option" value="1" />
 				</section>
 				<section class="panel">
@@ -48,8 +48,15 @@
 					<input id="arg_v" type="number" class="hidden-option" value="1" />
 					<div class="param-row">
 						<div class="param-main">
+							<label for="arg_c" data-i18n="ui.extraClearance">额外间距</label
+							><input id="arg_c" type="number" min="0" max="20" step="1" value="0" />
+						</div>
+						<div class="param-desc" data-i18n="ui.extraClearanceDesc">在 DSN 间距基础上增加（0.1mm）</div>
+					</div>
+					<div class="param-row">
+						<div class="param-main">
 							<label for="arg_t" data-i18n="ui.timeout">超时时间</label
-							><input id="arg_t" type="number" min="0" max="10000" step="1" value="600" />
+							><input id="arg_t" type="number" min="0" max="10000" step="1" value="3600" />
 						</div>
 						<div class="param-desc" data-i18n="ui.timeoutDesc">传给布线引擎的超时参数（秒）</div>
 					</div>
@@ -109,6 +116,9 @@
 						</div>
 						<div class="param-desc" data-i18n="ui.yRangeDesc">垂直方向的搜索范围</div>
 					</div>
+					<label class="auto-import-option"
+						><input id="auto_import" type="checkbox" /><span data-i18n="ui.autoImport">完成后自动导入（部分结果仍需确认）</span></label
+					>
 					<div class="btn-group">
 						<button id="go" type="button" data-i18n="ui.start">开始布线</button>
 						<button id="export_ses" type="button" disabled data-i18n="ui.exportSes">导出 SES</button>
@@ -132,8 +142,24 @@
 					<span id="timer-display">00:00</span>
 				</div>
 				<div id="log-content" role="log" aria-live="polite"></div>
+				<div class="progress-area">
+					<div class="progress-track"><div id="progress-fill"></div></div>
+					<span id="progress-text">0 / 0</span>
+				</div>
 			</section>
 		</main>
+		<div id="confirm_modal" class="modal-mask" hidden>
+			<section class="modal" role="dialog" aria-modal="true" aria-labelledby="confirm_title" aria-describedby="confirm_text">
+				<div class="modal-header"><h3 id="confirm_title" data-i18n="ui.partialTitle">导入部分布线结果</h3></div>
+				<div class="modal-body">
+					<p id="confirm_text"></p>
+					<div class="btn-group">
+						<button id="confirm_no" type="button" data-i18n="ui.cancel">取消</button
+						><button id="confirm_yes" type="button" data-i18n="ui.importSes">导入 SES</button>
+					</div>
+				</div>
+			</section>
+		</div>
 		<div id="help_modal" class="modal-mask" hidden>
 			<section class="modal" role="dialog" aria-modal="true" aria-labelledby="help_title">
 				<div class="modal-header">
@@ -142,14 +168,15 @@
 				</div>
 				<div class="modal-body">
 					<p>
-						<span data-i18n="ui.version">版本</span> <span id="extension_version">1.5.0</span> ·
+						<span data-i18n="ui.version">版本</span> <span id="extension_version">1.6.0</span> ·
 						<a href="https://github.com/vygr/JS-PCB" target="_blank" rel="noopener">JS-PCB</a>
 					</p>
 					<p data-i18n="ui.aboutDesc">获取 DSN 后运行自动布线，预览结果，再手动导入 SES。最近 10 次结果可在历史记录中下载。</p>
 					<p>
 						<span data-i18n="ui.contribution">多语言与界面展示贡献：</span>
 						<a href="https://github.com/easyeda2021" target="_blank" rel="noopener">summving (@easyeda2021)</a> ·
-						<a href="https://github.com/XHTimmo/js-pcb/pull/1" target="_blank" rel="noopener">PR #1</a>
+						<a href="https://github.com/XHTimmo/js-pcb/pull/1" target="_blank" rel="noopener">PR #1</a> ·
+						<a href="https://github.com/XHTimmo/js-pcb/pull/3" target="_blank" rel="noopener">PR #3</a>
 					</p>
 					<p data-i18n="ui.license">本扩展以 GPL-2.0 分发，不提供担保。第三方版权声明见 NOTICE.md。</p>
 					<a href="/LICENSE" target="_blank" rel="noopener" data-i18n="ui.viewLicense">查看许可证</a>

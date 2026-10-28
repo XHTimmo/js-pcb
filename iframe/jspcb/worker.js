@@ -1,5 +1,19 @@
 importScripts('mymath.js', 'layer.js', 'router.js');
 
+function pcb_stats(pcb_data)
+{
+	let total = 0;
+	let unrouted = 0;
+	let tracks = (pcb_data && pcb_data[1]) ? pcb_data[1] : [];
+	for (let track of tracks)
+	{
+		if (!(track[0] > 0)) continue; // 无电气连接的虚拟网络
+		total++;
+		if (!track[4] || track[4].length === 0) unrouted++;
+	}
+	return { total: total, unrouted: unrouted, routed: total - unrouted };
+}
+
 function pcb_thread(paramater_array)
 {
 	//generate range of routing vectors
@@ -51,26 +65,56 @@ function pcb_thread(paramater_array)
 	let current_pcb = new js_pcb.Pcb(pcb_data[0], routing_flood_vectorss, routing_path_vectorss,
 					dfuncs[arg_d], arg_r, arg_v, arg_q, arg_z);
 	for (let track of pcb_data[1]) current_pcb.add_track(track);
+	// 板框作为墙壁，避免走线/过孔贴边或越界（DRC 板边间距）
+	if (pcb_data[2] && pcb_data[2].length) current_pcb.add_wall(pcb_data[2], pcb_data[3] || 0);
+
+	const total_connected = current_pcb.connected_nets();
+	postMessage({type: 'progress', done: 0, total: total_connected});
+	postMessage({
+		type: 'log',
+		key: 'log.routingStart',
+		args: [total_connected, arg_s, arg_t]
+	});
 
 	//run number of samples of solution and pick best one
 	let best_pcb = current_pcb.output_pcb();
 	postMessage(best_pcb);
-	let best_cost = 1000000000;
+	let best_cost = Infinity;
+	let timed_out = false;
 	for (let i = 0; i < arg_s; ++i)
 	{
 		// 发送日志消息
 		postMessage({
-			type: 'log', 
-			message: `[采样 ${i+1}/${arg_s}] 开始布线...`
+			type: 'log',
+			key: 'log.sampleStart',
+			args: [i + 1, arg_s]
 		});
 
 		let startTime = Date.now();
 		if (!current_pcb.route(arg_t))
 		{
+			if (current_pcb.m_timedout)
+			{
+				timed_out = true;
+				// 已到超时时间：保留目前的最佳结果并结束，避免无限等待。
+				let routed_cost = current_pcb.cost();
+				if (routed_cost < best_cost)
+				{
+					best_cost = routed_cost;
+					best_pcb = current_pcb.output_pcb();
+				}
+				postMessage({
+					type: 'log',
+					key: 'log.timeout',
+					args: [i + 1, arg_s, arg_t]
+				});
+				break;
+			}
 			current_pcb.increase_quantization();
 			postMessage({
-				type: 'log', 
-				message: `[采样 ${i+1}/${arg_s}] 布线失败，增加量化精度重试`
+				type: 'log',
+				key: 'log.sampleFail',
+				args: [i + 1, arg_s]
 			});
 			continue;
 		}
@@ -79,9 +123,12 @@ function pcb_thread(paramater_array)
 		let duration = (endTime - startTime) / 1000;
 		let cost = current_pcb.cost();
 		
+		const sample_total = current_pcb.connected_nets();
+		const sample_unrouted = current_pcb.unrouted_nets();
 		postMessage({
-			type: 'log', 
-			message: `[采样 ${i+1}/${arg_s}] 完成! 耗时: ${duration.toFixed(2)}s, 代价: ${cost}`
+			type: 'log',
+			key: 'log.sampleDone',
+			args: [i + 1, arg_s, duration.toFixed(2), sample_total - sample_unrouted, sample_total, cost]
 		});
 
 		if (cost <= best_cost)
@@ -90,22 +137,48 @@ function pcb_thread(paramater_array)
 			best_pcb = current_pcb.output_pcb();
 			postMessage({
 				type: 'log', 
-				message: `>>> 发现更优解 (代价: ${cost})`
+				key: 'log.better',
+				args: [cost]
 			});
 			// Send intermediate best result for visualization
 			postMessage(best_pcb);
 		}
 	}
 	
+	// 统计必须与最终返回的 best_pcb 一致，而不是最后一次采样的 current_pcb
+	const stats = pcb_stats(best_pcb);
+	let status = 'complete';
+	if (stats.unrouted > 0) status = timed_out ? 'timeout' : 'partial';
+
+	postMessage({type: 'progress', done: stats.routed, total: stats.total});
 	postMessage({
-		type: 'log', 
-		message: `所有采样完成。最佳代价: ${best_cost}`
+		type: 'log',
+		key: 'log.allDone',
+		args: [stats.routed, stats.total, stats.unrouted]
 	});
-	postMessage(best_pcb);
+	postMessage({
+		type: 'done',
+		data: best_pcb,
+		cost: best_cost,
+		unrouted: stats.unrouted,
+		total: stats.total,
+		status: status
+	});
 }
 
 //thread event listner
 addEventListener('message', function(event)
 {
-	pcb_thread(event.data);
+	try
+	{
+		pcb_thread(event.data);
+	}
+	catch (e)
+	{
+		// 把异常回传给主线程，否则 worker 内报错时界面只会一直停住。
+		postMessage({
+			type: 'error',
+			message: (e && e.stack) ? e.stack : String(e)
+		});
+	}
 }, false);

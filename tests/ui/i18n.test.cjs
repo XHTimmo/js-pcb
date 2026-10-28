@@ -65,7 +65,8 @@ test('failed EDA language and file APIs fall back to browser language and HTTP',
 	const app = runtime({ browserLanguage: 'en-GB', eda: { sys_I18n: { getCurrentLanguage: fail }, sys_FileSystem: { getExtensionFile: fail } } });
 	await app.i18n.ready;
 	assert.equal(app.i18n.t('ui.start'), 'Start routing');
-	assert.equal(app.i18n.t('log.sampleDone', 1, 2, '0.25', 42), '[Sample 1/2] Done! Time: 0.25s, cost: 42');
+	assert.equal(app.i18n.t('log.legacySampleDone', 1, 2, '0.25', 42), '[Sample 1/2] Done! Time: 0.25s, cost: 42');
+	assert.equal(app.i18n.t('log.sampleDone', 1, 2, '0.25', 3, 4, 42), '[Sample 1/2] Done: 0.25s, routed 3/4, cost 42');
 	assert.equal(app.i18n.t('unknown.key'), 'unknown.key');
 });
 

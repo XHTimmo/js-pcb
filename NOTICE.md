@@ -19,6 +19,12 @@ This is a partial adaptation of PR #1, contributed by summving (@easyeda2021), r
 Co-authored-by: summving <summving@easyeda.com>
 ```
 
+## PR #3 的整合
+
+[PR #3](https://github.com/XHTimmo/js-pcb/pull/3) 继续整合 **summving <summving@easyeda.com>（@easyeda2021）** 的修复，原始修复提交为 `dba264beddff4f16021f8e362eba8472fd0c4976`。原始提交及共同作者信息保留在 Git 历史中。
+
+冲突解决保留 PR #2 的多语言模块、历史记录、手动 DSN/SES 操作、原扩展包名称和许可证声明，并接入新版 Worker、停止/重启、超时、进度、板框、焊盘分层及过孔规则。自动导入作为默认关闭的可选功能；部分布通或超时结果需要确认。额外修复了旧任务创建失败和导入确认回调的竞态，并补入可执行的 DSN 样例与回归检查。
+
 ## 许可证与原有声明
 
 本扩展整体按 **GNU General Public License version 2 (GPL-2.0)** 分发，全文见 [LICENSE](LICENSE)。`package.json`、根包锁文件与 `extension.json` 的许可证声明保持一致。第三方组件的原有许可证及版权声明继续保留，不因本次元信息更新而被删除。

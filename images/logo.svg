@@ -1,0 +1,144 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#196A54"/>
+      <stop offset="0.32" stop-color="#10493A"/>
+      <stop offset="0.68" stop-color="#092C22"/>
+      <stop offset="1" stop-color="#03150F"/>
+    </linearGradient>
+    <radialGradient id="mintGlow" cx="0.22" cy="0.14" r="0.85">
+      <stop offset="0" stop-color="#37C596" stop-opacity="0.42"/>
+      <stop offset="0.55" stop-color="#1C8064" stop-opacity="0.14"/>
+      <stop offset="1" stop-color="#1C8064" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="warmGlow" cx="0.58" cy="0.42" r="0.55">
+      <stop offset="0" stop-color="#FFB74D" stop-opacity="0.16"/>
+      <stop offset="1" stop-color="#FFB74D" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="vignette" cx="0.5" cy="0.5" r="0.74">
+      <stop offset="0.55" stop-color="#000000" stop-opacity="0"/>
+      <stop offset="1" stop-color="#000000" stop-opacity="0.42"/>
+    </radialGradient>
+    <linearGradient id="copper" x1="0.08" y1="0.05" x2="0.92" y2="0.95">
+      <stop offset="0" stop-color="#FFE7B0"/>
+      <stop offset="0.28" stop-color="#FBC56A"/>
+      <stop offset="0.62" stop-color="#E9A040"/>
+      <stop offset="1" stop-color="#C06E18"/>
+    </linearGradient>
+    <linearGradient id="copperSoft" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#F3BE72"/>
+      <stop offset="1" stop-color="#B96A1C"/>
+    </linearGradient>
+    <pattern id="dots" width="44" height="44" patternUnits="userSpaceOnUse">
+      <circle cx="22" cy="22" r="2.5" fill="#FFFFFF" opacity="0.055"/>
+    </pattern>
+    <filter id="drop" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="20" stdDeviation="24" flood-color="#000000" flood-opacity="0.45"/>
+    </filter>
+    <filter id="softShadow" x="-40%" y="-40%" width="180%" height="180%">
+      <feDropShadow dx="0" dy="10" stdDeviation="14" flood-color="#000000" flood-opacity="0.35"/>
+    </filter>
+    <filter id="sparkGlow" x="-140%" y="-140%" width="380%" height="380%">
+      <feGaussianBlur stdDeviation="11" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <clipPath id="round"><rect width="1024" height="1024" rx="256"/></clipPath>
+  </defs>
+
+  <g clip-path="url(#round)">
+    <rect width="1024" height="1024" fill="url(#bg)"/>
+    <rect width="1024" height="1024" fill="url(#mintGlow)"/>
+    <rect width="1024" height="1024" fill="url(#warmGlow)"/>
+    <rect width="1024" height="1024" fill="url(#dots)"/>
+
+    <!-- 背景电路纹理 -->
+    <g fill="none" stroke="#A9F7D2" stroke-opacity="0.115" stroke-width="6" stroke-linecap="round">
+      <path d="M 148 470 L 148 360 Q 148 330 178 330 L 300 330 Q 330 330 330 300 L 330 236"/>
+      <path d="M 210 190 L 252 190 Q 282 190 282 220 L 282 252"/>
+      <path d="M 890 588 L 890 700 Q 890 730 860 730 L 700 730 Q 670 730 670 760 L 670 822 Q 670 850 642 850 L 566 850"/>
+      <path d="M 790 896 L 790 878 Q 790 850 818 850 L 886 850"/>
+      <path d="M 452 132 L 452 176 Q 452 204 424 204 L 372 204"/>
+      <path d="M 128 690 L 128 738 Q 128 766 156 766 L 218 766"/>
+    </g>
+    <g fill="none" stroke="#A9F7D2" stroke-opacity="0.115" stroke-width="5">
+      <circle cx="330" cy="236" r="15"/>
+      <circle cx="282" cy="252" r="15"/>
+      <circle cx="566" cy="850" r="15"/>
+      <circle cx="886" cy="850" r="15"/>
+      <circle cx="372" cy="204" r="15"/>
+      <circle cx="810" cy="176" r="13"/>
+      <circle cx="196" cy="856" r="13"/>
+      <circle cx="218" cy="766" r="13"/>
+    </g>
+
+    <!-- 背景元件:芯片与贴片 -->
+    <g fill="none" stroke="#A9F7D2" stroke-opacity="0.1" stroke-width="5">
+      <rect x="128" y="104" width="172" height="122" rx="24"/>
+      <path d="M 300 138 L 336 138 M 300 165 L 336 165 M 300 192 L 336 192"/>
+      <rect x="706" y="592" width="118" height="66" rx="18"/>
+    </g>
+    <g fill="#A9F7D2" fill-opacity="0.1">
+      <rect x="722" y="608" width="18" height="34" rx="7"/>
+      <rect x="790" y="608" width="18" height="34" rx="7"/>
+      <circle cx="154" cy="128" r="6"/>
+    </g>
+
+    <rect width="1024" height="1024" fill="url(#vignette)"/>
+    <rect x="16" y="16" width="992" height="992" rx="244" fill="none"
+          stroke="#FFFFFF" stroke-opacity="0.09" stroke-width="3"/>
+  </g>
+
+  <!-- 分支走线 -->
+  <g filter="url(#softShadow)">
+    <path d="M 300 700 C 400 750 470 800 590 808" fill="none"
+          stroke="url(#copperSoft)" stroke-width="36" stroke-linecap="round"/>
+    <path d="M 630 395 C 680 430 722 450 782 456" fill="none"
+          stroke="url(#copperSoft)" stroke-width="30" stroke-linecap="round"/>
+  </g>
+  <path d="M 300 700 C 400 750 470 800 590 808" fill="none"
+        stroke="#FFEBC4" stroke-opacity="0.16" stroke-width="8" stroke-linecap="round"/>
+  <path d="M 630 395 C 680 430 722 450 782 456" fill="none"
+        stroke="#FFEBC4" stroke-opacity="0.16" stroke-width="7" stroke-linecap="round"/>
+  <circle cx="590" cy="808" r="42" fill="url(#copperSoft)"/>
+  <circle cx="590" cy="808" r="17" fill="#062018"/>
+  <circle cx="812" cy="458" r="35" fill="url(#copperSoft)"/>
+  <circle cx="812" cy="458" r="14" fill="#062018"/>
+
+  <!-- 主走线 -->
+  <g filter="url(#drop)">
+    <path d="M 300 700 C 300 520 360 490 470 490 C 620 490 640 300 790 300"
+          fill="none" stroke="url(#copper)" stroke-width="68" stroke-linecap="round"/>
+  </g>
+  <path d="M 300 700 C 300 520 360 490 470 490 C 620 490 640 300 790 300"
+        fill="none" stroke="#FFF6DF" stroke-opacity="0.18" stroke-width="10" stroke-linecap="round"/>
+
+  <!-- 主焊盘 -->
+  <g filter="url(#drop)">
+    <circle cx="300" cy="700" r="104" fill="url(#copper)"/>
+  </g>
+  <circle cx="300" cy="700" r="104" fill="none" stroke="#FFEBC4" stroke-opacity="0.28" stroke-width="4"/>
+  <circle cx="300" cy="700" r="46" fill="#052018"/>
+  <circle cx="300" cy="700" r="62" fill="none" stroke="#FFD893" stroke-opacity="0.25" stroke-width="3"/>
+
+  <g filter="url(#drop)">
+    <circle cx="790" cy="300" r="88" fill="url(#copper)"/>
+  </g>
+  <circle cx="790" cy="300" r="88" fill="none" stroke="#FFEBC4" stroke-opacity="0.28" stroke-width="4"/>
+  <circle cx="790" cy="300" r="38" fill="#052018"/>
+  <circle cx="790" cy="300" r="54" fill="none" stroke="#FFD893" stroke-opacity="0.25" stroke-width="3"/>
+
+  <!-- 过孔 -->
+  <g filter="url(#softShadow)">
+    <circle cx="344" cy="527" r="46" fill="url(#copper)"/>
+    <circle cx="630" cy="395" r="46" fill="url(#copper)"/>
+  </g>
+  <circle cx="344" cy="527" r="20" fill="#052018"/>
+  <circle cx="630" cy="395" r="20" fill="#052018"/>
+
+  <!-- 星芒 -->
+  <g filter="url(#sparkGlow)" fill="#B5FBDC" opacity="0.95">
+    <path d="M 706 152 C 714 182 727 195 757 203 C 727 211 714 224 706 254 C 698 224 685 211 655 203 C 685 195 698 182 706 152 Z"/>
+    <path d="M 812 104 C 815 117 820 122 833 125 C 820 128 815 133 812 146 C 809 133 804 128 791 125 C 804 122 809 117 812 104 Z"/>
+    <path d="M 908 206 C 910 214 913 217 921 219 C 913 221 910 224 908 232 C 906 224 903 221 895 219 C 903 217 906 214 908 206 Z"/>
+  </g>
+</svg>
