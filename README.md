@@ -181,6 +181,21 @@ This project is distributed under the **GNU General Public License v2.0 (GPL-2.0
 See [LICENSE](LICENSE) for the full text.
 
 ## Third-Party Components
+## 贡献来源
+
+本次多语言与界面展示改进部分提取并改编自 [PR #1](https://github.com/XHTimmo/js-pcb/pull/1)，感谢原贡献者 **summving <summving@easyeda.com>**（[@easyeda2021](https://github.com/easyeda2021)）。保留历史记录与手动导入/导出流程；详细来源及第三方版权声明见 [NOTICE.md](NOTICE.md)，本次 PR 描述草稿见 [docs/pr-1-ui-backport.md](docs/pr-1-ui-backport.md)。
+
+## 开发验证
+
+```bash
+npm ci
+npm run test:ui
+npm run build
+```
+
+`test:ui` 验证语言加载与界面兼容逻辑。原有 `npm test` 中的 `tests/autorouter/` 测试引用了当前仓库缺失的 `src/autorouter/` 模块，需要另行补齐；构建成功不代表已完成真实 PCB 的布线或 DRC 验证。
+
+## 第三方开源组件说明
 
 - **JS-PCB** (https://github.com/vygr/JS-PCB) — GPL-2.0
     - Core routing files: `iframe/jspcb/router.js`, `worker.js`, `mymath.js`, `layer.js`.
@@ -192,3 +207,12 @@ See [LICENSE](LICENSE) for the full text.
 ## Changelog
 
 See [CHANGELOG.md](CHANGELOG.md).
+- **JS-PCB** (https://github.com/vygr/JS-PCB)
+    - 许可证：GNU General Public License v2.0 (GPL-2.0)
+    - 原始代码位置：`iframe/jspcb/` 目录下的核心逻辑文件（如 `router.js`, `worker.js`, `mymath.js` 等）。
+    - 修改说明：
+        - `iframe/jspcb/index.html`: 修改了 UI 布局和样式以适配 EDA 扩展风格。
+        - `iframe/jspcb/main.js`: 增加了与 JLCEDA API 通信的胶水代码（DSN 获取与 SES 导入）。
+        - 修复了在 IFrame 环境下 Worker 加载的跨域/安全问题。
+
+**注意**：本扩展包遵循 GPL-2.0 协议分发，许可证全文见 [LICENSE](LICENSE)。SDK 模板原有的 Apache-2.0 许可证与 JLCEDA 版权声明保留于 [LICENSES/Apache-2.0.txt](LICENSES/Apache-2.0.txt)。如果您分发本扩展包或其衍生作品，请确保遵守相应许可证条款。

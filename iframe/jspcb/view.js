@@ -1,4 +1,5 @@
-"use strict";
+// Preview palette adapted from PR #1 by summving (@easyeda2021); see NOTICE.md.
+'use strict';
 
 var js_pcb = js_pcb || {};
 (function()
@@ -10,8 +11,8 @@ var js_pcb = js_pcb || {};
 		[width, height, depth] = pcb_data[0];
 
 		//create/replace SVG element
-		let container = d3.select("#pcb_view");
-		if (container.empty()) container = d3.select("body");
+		let container = d3.select('#pcb_view');
+		if (container.empty()) container = d3.select('body');
 
 		// Auto-scaling logic
 		if (scale <= 0) {
@@ -26,39 +27,46 @@ var js_pcb = js_pcb || {};
 			// We also need to account for margin * scale * 2
 			// total_w = (width + margin * 2) * scale
 			// total_h = (height + margin * 2) * scale
-			
+
 			let w_scale = cw / (width + margin * 2);
 			let h_scale = ch / (height + margin * 2);
-			
+
 			scale = Math.min(w_scale, h_scale);
-			
+
 			// Optional: Limit max scale or min scale if needed
-			if (scale <= 0) scale = 1; 
+			if (scale <= 0) scale = 1;
 		}
 
-		let path_func = d3.line()
-			.x(function(d) { return d[0]; })
-			.y(function(d) { return d[1]; });
+		let path_func = d3
+			.line()
+			.x(function (d) {
+				return d[0];
+			})
+			.y(function (d) {
+				return d[1];
+			});
 
-		let svg = container.select("svg");
+		let svg = container.select('svg');
 		if (!svg.empty()) svg.remove();
-		svg = container.append("svg")
-			.attr("width", (width + margin * 2) * scale)
-			.attr("height", (height + margin * 2) * scale)
-			.style("display", "block") // Remove extra space below SVG
-			.style("margin", "auto"); // Center horizontally if flex doesn't cover it
+		svg = container
+			.append('svg')
+			.attr('width', (width + margin * 2) * scale)
+			.attr('height', (height + margin * 2) * scale)
+			.style('display', 'block') // Remove extra space below SVG
+			.style('margin', 'auto'); // Center horizontally if flex doesn't cover it
 
-		svg.append("rect")
-			.attr("width", (width + margin * 2) * scale)
-			.attr("height", (height + margin * 2) * scale)
-			.attr("fill", "black");
-			
-		let pcb = svg.append("g")
-			.attr("transform", "scale(" + scale + "," + scale + ") translate(" + margin + "," + margin + ")")
-			.attr("stroke-linecap", "round")
-			.attr("stroke-linejoin", "round")
-			.attr("stroke-width", "0")
-			.attr("fill", "none");
+		svg.append('rect')
+			.attr('width', (width + margin * 2) * scale)
+			.attr('height', (height + margin * 2) * scale)
+			.attr('fill', 'black');
+
+		let pcb = svg
+			.append('g')
+			.attr('transform', 'scale(' + scale + ',' + scale + ') translate(' + margin + ',' + margin + ')')
+			.attr('stroke-linecap', 'round')
+			.attr('stroke-linejoin', 'round')
+			.attr('stroke-width', '0')
+			.attr('fill', 'none');
 
 		//create layers, last layer is the terminals layer
 		let layers = [];
@@ -73,42 +81,38 @@ var js_pcb = js_pcb || {};
 			.attr("stroke", "#c7ccd4"));
 
 		//add tracks
-		for (let track of pcb_data[1])
-		{
+		for (let track of pcb_data[1]) {
 			let track_radius, paths;
 			[track_radius, , , , paths] = track;
-			for (let path of paths)
-			{
-				let node, start = 0;
+			for (let path of paths) {
+				let node,
+					start = 0;
 				let d = path[start][2];
-				for (node = 1; node < path.length; ++node)
-				{
+				for (node = 1; node < path.length; ++node) {
 					if (path[node][2] === d) continue;
-					if (node - start > 1)
-					{
-						layers[d].append("path")
-							.attr("stroke-width", track_radius * 2)
-							.attr("d", path_func(path.slice(start, node)));
+					if (node - start > 1) {
+						layers[d]
+							.append('path')
+							.attr('stroke-width', track_radius * 2)
+							.attr('d', path_func(path.slice(start, node)));
 					}
 					start = node;
 					d = path[start][2];
 				}
-				if (node - start > 1)
-				{
-					layers[d].append("path")
-						.attr("stroke-width", track_radius * 2)
-						.attr("d", path_func(path.slice(start, node)));
+				if (node - start > 1) {
+					layers[d]
+						.append('path')
+						.attr('stroke-width', track_radius * 2)
+						.attr('d', path_func(path.slice(start, node)));
 				}
 			}
 		}
 
 		//add terminals and vias
-		for (let track of pcb_data[1])
-		{
+		for (let track of pcb_data[1]) {
 			let track_radius, via_radius, track_gap, terminals, paths;
 			[track_radius, via_radius, track_gap, terminals, paths] = track;
-			for (let terminal of terminals)
-			{
+			for (let terminal of terminals) {
 				let terminal_radius, terminal_gap, terminal_x, terminal_y, terminal_z, terminal_shape;
 				[terminal_radius, terminal_gap, [terminal_x, terminal_y, terminal_z],  terminal_shape] = terminal;
 				// 按焊盘层着色：顶层淡红色、底层淡蓝色、通孔（多层）淡灰色
@@ -143,8 +147,7 @@ var js_pcb = js_pcb || {};
 							function(e){ return [e[0] + terminal_x, e[1] + terminal_y]; })));
 				}
 			}
-			for (let path of paths)
-			{
+			for (let path of paths) {
 				let terminal_z = path[0][2];
 				for (let node = 1; node < path.length; ++node)
 				{

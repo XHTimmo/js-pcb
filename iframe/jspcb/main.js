@@ -1,3 +1,7 @@
+/**
+ * Presentation adapted from PR #1 by summving (@easyeda2021).
+ * https://github.com/XHTimmo/js-pcb/pull/1 — see NOTICE.md.
+ */
 //filename and worker
 let file = null;
 let originalFile = null;  // 保存归一化前的原始 DSN 内容
@@ -15,6 +19,21 @@ function t(key, ...args)
 {
 	if (window.jspcbI18n && window.jspcbI18n.t) return window.jspcbI18n.t(key, ...args);
 	return key;
+let originalFile = null; // 保存原始文件内容（转换前）
+let fileName = 'output'; // 文件名
+let worker = null;
+let lastPcbData = null; // 保存最后的布线结果
+let isJlcConverted = false; // 是否经过 JLC 转换
+let shouldSaveHistory = false;
+let routingTimer = null;
+let routingStartTime = 0;
+const HISTORY_KEY = 'js_pcb_history_v1';
+const HISTORY_LIMIT = 10;
+let historyRecords = [];
+let logRecords = [];
+
+function t(key, ...args) {
+	return jspcbI18n.t(key, ...args);
 }
 
 function startTimer() {
@@ -23,7 +42,7 @@ function startTimer() {
 	display.style.display = 'inline-block';
 	display.innerText = '00:00';
 	routingStartTime = Date.now();
-	
+
 	routingTimer = setInterval(() => {
 		const elapsed = Date.now() - routingStartTime;
 		const seconds = Math.floor(elapsed / 1000);
@@ -55,8 +74,7 @@ async function loadTextFile(relativePath) {
 async function createRoutingWorker() {
 	try {
 		return new Worker('/iframe/jspcb/worker.js');
-	} catch (e) {
-	}
+	} catch (e) {}
 
 	const mymath = await loadTextFile('mymath.js');
 	const layer = await loadTextFile('layer.js');
@@ -160,12 +178,19 @@ async function handleOnGo(evt)
 		appendLog(t('log.init'));
 		setRoutingState(true);
 		setProgress(0, 0);
+		logRecords = [];
+		document.getElementById('log-content').innerHTML = '';
+		appendLog('log.init');
+		document.getElementById('go').disabled = true;
+		shouldSaveHistory = false;
 		startTimer();
 
 		//run pcb solver web worker thread, register output listner
 		if (worker !== null) worker.terminate();
 		if (workerBlobUrl) {
-			try { URL.revokeObjectURL(workerBlobUrl); } catch {}
+			try {
+				URL.revokeObjectURL(workerBlobUrl);
+			} catch {}
 			workerBlobUrl = null;
 		}
 		try {
@@ -280,9 +305,9 @@ async function handleOnGo(evt)
 	}
 }
 
-function appendLog(message) {
-	let logContainer = document.getElementById('log-content');
-	let entry = document.createElement('div');
+function renderLogRecord(record) {
+	const container = document.getElementById('log-content');
+	const entry = document.createElement('div');
 	entry.className = 'log-entry';
 
 	const now = new Date();
@@ -415,18 +440,16 @@ function renderBoardPreview()
 }
 
 //file selection handler
-function handleFileSelect(evt)
-{
+function handleFileSelect(evt) {
 	//filelist
 	let files = evt.target.files;
 	let f = files[0];
 
 	//dsn files only.
-	if (f.name.match('.*[.]dsn'))
-	{
+	if (f.name.match('.*[.]dsn')) {
 		// 保存文件名
 		fileName = f.name.replace('.dsn', '');
-		
+
 		//file reader
 		let reader = new FileReader();
 
@@ -439,7 +462,7 @@ function handleFileSelect(evt)
 }
 
 // Resize handler to re-render SVG on window resize
-window.addEventListener('resize', function() {
+window.addEventListener('resize', function () {
 	if (lastPcbData) {
 		// Re-render with auto-scaling
 		js_pcb.view_pcb(lastPcbData, 0, 2, currentBoundary);
