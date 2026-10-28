@@ -64,17 +64,15 @@ function convertPcbToSes(pcbData, dsnInfo, options = {}) {
     ses.push(`    )`);
     ses.push(`    (library_out `);
     
-    const viaCount = countVias(tracks);
-    for (let i = 0; i < Math.max(viaCount, 1); i++) {
-        ses.push(`      (padstack via0`);
-        ses.push(`        (shape`);
-        ses.push(`          (circle 1 ${opts.viaSize * 1000} 0 0)`);
-        ses.push(`        )`);
-        ses.push(`        (shape`);
-        ses.push(`          (circle 2 ${opts.viaSize * 1000} 0 0)`);
-        ses.push(`        )`);
-        ses.push(`      )`);
-    }
+    // SES 中每种过孔 padstack 只声明一次（同名重复声明可能导致导入异常）
+    ses.push(`      (padstack via0`);
+    ses.push(`        (shape`);
+    ses.push(`          (circle 1 ${opts.viaSize * 1000} 0 0)`);
+    ses.push(`        )`);
+    ses.push(`        (shape`);
+    ses.push(`          (circle 2 ${opts.viaSize * 1000} 0 0)`);
+    ses.push(`        )`);
+    ses.push(`      )`);
     
     ses.push(`    )`);
     ses.push(`    (network_out `);
@@ -331,20 +329,6 @@ function formatWire(points, layer, width, scale, offsetX, offsetY) {
     lines.push(`          )`);
     lines.push(`        )`);
     return lines.join('\n');
-}
-
-function countVias(tracks) {
-    let count = 0;
-    for (const track of tracks) {
-        const paths = track[4];
-        if (!paths) continue;
-        for (const path of paths) {
-            for (let i = 1; i < path.length; i++) {
-                if (path[i][2] !== path[i-1][2]) count++;
-            }
-        }
-    }
-    return count;
 }
 
 function parseDsnNetNames(dsnContent) {

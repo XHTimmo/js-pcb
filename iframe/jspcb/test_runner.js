@@ -26,9 +26,17 @@ global.importScripts = function(...files) {
 };
 
 // 模拟 postMessage (用于接收 worker 输出)
+// 新版 worker 最终发送 { type: 'done', data: best_pcb, ... }，
+// 中间还会发送 progress/log 和 pcb 数组，只保留 done.data（或旧版数组）。
 let workerOutput = null;
+let workerDone = false;
 global.postMessage = function(msg) {
-    workerOutput = msg;
+    if (msg && msg.type === 'done') {
+        workerOutput = msg.data;
+        workerDone = true;
+    } else if (Array.isArray(msg) && msg.length === 2) {
+        workerOutput = msg;
+    }
 };
 
 global.addEventListener = function(type, listener) {
@@ -75,16 +83,36 @@ if (typeof pcb_thread !== 'function') {
 // --- 测试流程 ---
 
 async function runTest() {
-    await testFile('示例.dsn');
-    console.log('\n--------------------------------------------------\n');
-    await testFile('jlc输出.dsn');
+    const cliFiles = process.argv.slice(2);
+    if (cliFiles.length) {
+        for (const file of cliFiles) await testFile(path.resolve(file));
+        return;
+    }
+    const dirs = [
+        path.resolve(__dirname, '..', 'jlc-file'),
+        path.resolve(__dirname, '..', 'temp')
+    ];
+    const files = [];
+    for (const dir of dirs) {
+        if (!fs.existsSync(dir)) continue;
+        for (const name of fs.readdirSync(dir)) {
+            if (name.toLowerCase().endsWith('.dsn')) files.push(path.join(dir, name));
+        }
+    }
+    if (!files.length) {
+        console.error('No DSN files found. Usage: node test_runner.js <file.dsn> [...]');
+        process.exit(1);
+    }
+    for (const file of files) await testFile(file);
 }
 
-async function testFile(filename) {
-    const dsnPath = path.resolve(__dirname, '..', 'jlc-file', filename);
-    const sesOutputPath = path.resolve(__dirname, `test_output_${filename}.ses`);
+async function testFile(dsnPath) {
+    const baseName = path.basename(dsnPath, '.dsn');
+    const outDir = path.resolve(__dirname, '..', '..', 'tmp');
+    fs.mkdirSync(outDir, { recursive: true });
+    const sesOutputPath = path.resolve(outDir, `test_output_${baseName}.ses`);
 
-    console.log(`\n--- Test Start: ${filename} ---`);
+    console.log(`\n--- Test Start: ${dsnPath} ---`);
     console.log(`Input DSN: ${dsnPath}`);
     
     if (!fs.existsSync(dsnPath)) {
@@ -98,28 +126,33 @@ async function testFile(filename) {
     // 根据 main.js，用户勾选转换。
     console.log('Step 1: Normalizing EasyEDA DSN...');
     let normalizedDsn = dsnContent;
-    let isDsnNormalized = true; // 假设是嘉立创格式
-    try {
-        normalizedDsn = global.normalizeDsn(dsnContent);
-        console.log('Normalization successful. Preview (first 2000 chars):');
-        console.log(normalizedDsn.substring(0, 2000));
-        // Check for network section
-        if (normalizedDsn.includes('(network')) {
-            console.log('✅ Found (network ... ) section in normalized DSN');
-        } else {
-            console.log('❌ (network ... ) section MISSING in normalized DSN');
+    let isDsnNormalized = false;
+    const isJlcDsn = /\(resolution\s+mil\s+1000\)/i.test(dsnContent) &&
+        /host_cad\s+"EasyEDA Pro"/i.test(dsnContent);
+    if (isJlcDsn) {
+        try {
+            normalizedDsn = global.normalizeDsn(dsnContent);
+            isDsnNormalized = true;
+            console.log('Normalization successful. Preview (first 2000 chars):');
+            console.log(normalizedDsn.substring(0, 2000));
+            if (normalizedDsn.includes('(network')) {
+                console.log('✅ Found (network ... ) section in normalized DSN');
+            } else {
+                console.log('❌ (network ... ) section MISSING in normalized DSN');
+            }
+        } catch (e) {
+            console.error('Normalization failed:', e);
+            return;
         }
-    } catch (e) {
-
-        console.error('Normalization failed or not needed:', e);
-        isDsnNormalized = false;
+    } else {
+        console.log('Not an EasyEDA/JLC DSN; using content as-is.');
     }
 
     // 2. 解析 DSN 到 PCB 数据
     console.log('Step 2: Parsing DSN to PCB data...');
     const gap = 2; // 默认值
     // dsn2pcb 需要标准 Specctra DSN（0.1um 坐标、F.Cu/B.Cu 层名）
-    const pcbInputData = global.js_pcb.dsn2pcb(normalizedDsn, gap);
+    const pcbInputData = global.js_pcb.dsn2pcb(normalizedDsn, gap, 0);
     console.log(`DEBUG: pcbInputData tracks count: ${pcbInputData[1].length}`);
     console.log(`DEBUG: PCB Dimensions: ${pcbInputData[0]}`);
     
@@ -129,23 +162,24 @@ async function testFile(filename) {
     // 使用默认参数，减少时间 arg_t = 5s (默认 600)
     const args = [
         pcbInputData,
-        5,  // time limit (s)
-        1,  // detailed output
+        30, // time limit (s)
+        0,  // detailed output (preview not needed in CLI)
         1,  // samples
-        0,  // vias cost
+        16, // via cost
         1,  // resolution (MUST BE > 0)
-        0,  // quantization
-        0,  // distance func
-        6,  // flood range
-        2,  // x range
-        2   // y range
+        2,  // quantization (must be > 0)
+        1,  // distance func (Manhattan)
+        2,  // flood range
+        1,  // x range
+        1   // y range
     ];
 
     workerOutput = null;
+    workerDone = false;
     pcb_thread(args);
 
-    if (!workerOutput) {
-        console.error('Router failed to produce output!');
+    if (!workerDone || !workerOutput) {
+        console.error('Router failed to produce a done result!');
         return;
     }
     
@@ -164,7 +198,7 @@ async function testFile(filename) {
     // 所以这里应该传 dsnContent (原始 JLC DSN)
     
     const dsnInfo = global.parseDsnInfo(dsnContent); 
-    dsnInfo.fileName = path.basename(filename, '.dsn');
+    dsnInfo.fileName = baseName;
     dsnInfo.isDsnNormalized = isDsnNormalized;
 
     // 检查 parseDsnInfo 的结果
@@ -172,17 +206,142 @@ async function testFile(filename) {
     console.log(`Bounds: [${dsnInfo.minx}, ${dsnInfo.miny}, ${dsnInfo.maxy}]`);
 
     const sesContent = global.convertPcbToSes(finalPcbData, dsnInfo, { gap: gap });
+    const viaPadstacks = (sesContent.match(/\(padstack via0/g) || []).length;
+    console.log('SES via0 padstack declarations:', viaPadstacks);
+    if (viaPadstacks !== 1) {
+        console.error('❌ Expected exactly one via0 padstack declaration');
+    } else {
+        console.log('✅ Single via0 padstack declaration');
+    }
+    if (!sesContent.includes('(network_out') || !sesContent.includes('(resolution')) {
+        console.error('❌ SES structure check failed');
+    } else {
+        console.log('✅ SES has resolution and network_out sections');
+    }
     
     fs.writeFileSync(sesOutputPath, sesContent, 'utf8');
     console.log(`SES written to ${sesOutputPath}`);
     console.log('DEBUG: SES Content Preview (first 500 chars):');
     console.log(sesContent.substring(0, 500));
 
-    // 5. 分析结果
+    // 5. 连通性回归：3 引脚及以上网络的所有引脚必须在同一条路径网络上
+    analyzeConnectivity(finalPcbData);
+
+    // 6. 分析结果
     analyzeResults(dsnContent, sesContent, dsnInfo);
 }
 
+function analyzeConnectivity(pcbData) {
+    const TOL = 0.8; // 一个网格左右
+    let checked = 0;
+    let bad = 0;
+
+    function segDist2(px, py, ax, ay, bx, by) {
+        const vx = bx - ax, vy = by - ay;
+        const wx = px - ax, wy = py - ay;
+        const c1 = vx * wx + vy * wy;
+        if (c1 <= 0) return wx * wx + wy * wy;
+        const c2 = vx * vx + vy * vy;
+        if (c2 <= c1) {
+            const dx = px - bx, dy = py - by;
+            return dx * dx + dy * dy;
+        }
+        const t = c1 / c2;
+        const dx = px - (ax + t * vx), dy = py - (ay + t * vy);
+        return dx * dx + dy * dy;
+    }
+
+    // 顶点落在线段上（同层），用于处理 T 型连接：优化后交点可能不是显式顶点
+    function vertexOnPath(v, path) {
+        for (let i = 1; i < path.length; ++i) {
+            const a = path[i - 1], b = path[i];
+            if (a[2] !== v[2] || b[2] !== v[2]) continue;
+            if (segDist2(v[0], v[1], a[0], a[1], b[0], b[1]) <= TOL * TOL) return true;
+        }
+        return false;
+    }
+
+    for (const track of pcbData[1]) {
+        if (!(track[0] > 0)) continue;
+        const terms = track[3];
+        const paths = track[4];
+        if (terms.length < 3) continue;
+        // 未布通的网络由 worker 的 unrouted 统计负责；这里只验证已布通网络
+        if (!paths.length) continue;
+        checked++;
+
+        const parent = paths.map((_, i) => i);
+        function find(i) {
+            while (parent[i] !== i) {
+                parent[i] = parent[parent[i]];
+                i = parent[i];
+            }
+            return i;
+        }
+        function union(a, b) {
+            a = find(a); b = find(b);
+            if (a !== b) parent[a] = b;
+        }
+
+        // 路径之间：共享顶点，或一个路径的顶点落在另一路径的线段上
+        for (let i = 0; i < paths.length; ++i) {
+            for (let j = i + 1; j < paths.length; ++j) {
+                let connected = false;
+                for (const v of paths[i]) if (vertexOnPath(v, paths[j])) { connected = true; break; }
+                if (!connected) for (const v of paths[j]) if (vertexOnPath(v, paths[i])) { connected = true; break; }
+                if (connected) union(i, j);
+            }
+        }
+
+        const roots = new Set();
+        let missing = false;
+        for (const t of terms) {
+            const tx = t[2][0], ty = t[2][1];
+            let hit = -1;
+            for (let i = 0; i < paths.length; ++i) {
+                let near = false;
+                for (const v of paths[i]) {
+                    if (Math.abs(v[0] - tx) < TOL && Math.abs(v[1] - ty) < TOL) { near = true; break; }
+                }
+                if (!near) {
+                    for (let k = 1; k < paths[i].length; ++k) {
+                        const a = paths[i][k - 1], b = paths[i][k];
+                        if (segDist2(tx, ty, a[0], a[1], b[0], b[1]) <= TOL * TOL) { near = true; break; }
+                    }
+                }
+                if (near) { hit = i; break; }
+            }
+            if (hit < 0) { missing = true; break; }
+            roots.add(find(hit));
+        }
+
+        if (missing || roots.size !== 1) bad++;
+    }
+
+    console.log('Connectivity check: multi-pin nets =', checked, ', disconnected =', bad);
+    if (bad > 0) {
+        console.error('❌ Connectivity regression detected');
+    } else {
+        console.log('✅ All multi-pin nets are connected');
+    }
+}
+
 function analyzeResults(dsnContent, sesContent, dsnInfo) {
+    // 完整回归：DSN -> 归一化 -> dsn2pcb -> worker -> SES 已在上面的流程中执行，
+    // 这里额外检查 3 个及以上引脚的网络是否在 SES 中有对应走线。
+    let multiPinNets = 0;
+    for (const [netName, pins] of (dsnInfo.netPins || new Map())) {
+        if (pins.length < 3) continue;
+        multiPinNets++;
+        const blockStart = sesContent.indexOf('(net ' + netName);
+        const blockEnd = blockStart >= 0 ? sesContent.indexOf('(net ', blockStart + 1) : -1;
+        const block = blockStart >= 0 ? sesContent.slice(blockStart, blockEnd > blockStart ? blockEnd : undefined) : '';
+        if (!block.includes('(wire')) {
+            console.log('⚠️  Multi-pin net has no wire in SES:', netName, 'pins=', pins.length);
+        }
+    }
+    console.log('Multi-pin nets checked:', multiPinNets);
+
     console.log('\n--- Analysis Results ---');
     
     // 1. 网络名对比
@@ -213,18 +372,26 @@ function analyzeResults(dsnContent, sesContent, dsnInfo) {
     }
 
     // 2. 坐标范围检查
-    // 简单的正则提取 SES 中的 path 坐标
+    // SES 的 path 坐标在 `(path ...` 的后续行中，逐行解析到闭合括号
     let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-    const pathLines = sesContent.split('\n').filter(l => l.includes('(path'));
     let pointCount = 0;
-    
-    for (const line of pathLines) {
-        // (path layer width x1 y1 x2 y2 ...)
-        const parts = line.trim().replace(/[()]/g, '').split(/\s+/);
-        // parts[0]=path, parts[1]=layer, parts[2]=width, parts[3]=x1...
-        for (let i = 3; i < parts.length; i+=2) {
+    let inPath = false;
+
+    for (const line of sesContent.split('\n')) {
+        const t = line.trim();
+        if (t.startsWith('(path ')) {
+            inPath = true;
+            continue;
+        }
+        if (!inPath) continue;
+        if (t === ')' || t.startsWith(')')) {
+            inPath = false;
+            continue;
+        }
+        const parts = t.split(/\s+/).filter(Boolean);
+        for (let i = 0; i + 1 < parts.length; i += 2) {
             const x = parseFloat(parts[i]);
-            const y = parseFloat(parts[i+1]);
+            const y = parseFloat(parts[i + 1]);
             if (!isNaN(x)) {
                 minX = Math.min(minX, x);
                 maxX = Math.max(maxX, x);

@@ -301,23 +301,9 @@ function convertLibrary(node) {
     images.forEach(img => result.push(img));
     padstacks.forEach(ps => result.push(ps));
     
-    // 添加标准 via padstack。
-    // 坐标系是 um*10，24 mil（0.6096 mm）过孔对应 6096；
-    // 原来写 889（=0.0889 mm）会让布线器按过小的过孔判断间距，
-    // 而导出 SES 时又按 24 mil 写过孔，导致导入后出现间距/短路问题。
-    result.push([
-        'padstack', '"Via[0-1]_889:635_um"',
-        ['shape', ['circle', 'F.Cu', '6096']],
-        ['shape', ['circle', 'B.Cu', '6096']],
-        ['attach', 'off']
-    ]);
-    result.push([
-        'padstack', '"Via[0-1]_889:0_um"',
-        ['shape', ['circle', 'F.Cu', '6096']],
-        ['shape', ['circle', 'B.Cu', '6096']],
-        ['attach', 'off']
-    ]);
-    
+    // 不再添加写死的 Via padstack：原始 via0 已在上面的 padstacks 中保留，
+    // structure 的 (via ...) 与 class 的 circuit/use_via 会统一引用它，
+    // 名称、尺寸、层和网络类别约束保持一致。
     return result;
 }
 
@@ -501,10 +487,9 @@ function convertClass(node) {
             if (name) netNames.push(name);
         } else if (Array.isArray(child)) {
             if (child[0] === 'circuit') {
-                children.push([
-                    'circuit',
-                    ['use_via', '"Via[0-1]_889:635_um"']
-                ]);
+                // 保留原始 circuit/use_via 定义，避免网络类别使用的过孔
+                // 与 structure/library 中的 padstack 名称和尺寸不一致。
+                children.push(child);
             } else if (child[0] === 'rule') {
                 children.push(convertRule(child));
             }

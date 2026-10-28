@@ -76,5 +76,15 @@
 	"ui.errEmptyDsn": "DSN content is empty",
 	"ui.errNormalize": "DSN normalization failed",
 	"ui.errUnknown": "Unknown error",
-	"ui.dialogTitle": "JS-PCB Autorouter"
+	"ui.dialogTitle": "JS-PCB Autorouter",
+	"ui.progressDone": "Routed ${1}/${2}",
+	"ui.confirmTitle": "Routing incomplete",
+	"ui.confirmImport": "Import result",
+	"ui.confirmSkip": "Cancel",
+	"toast.partialConfirm": "Only ${1}/${2} nets were routed. Import the partial result?",
+	"toast.partialDone": "Routing finished: ${1}/${2} routed (partial)",
+	"toast.timeoutDone": "Routing timed out: ${1}/${2} routed",
+	"log.partialImport": "Partial routing result imported",
+	"log.partialSkip": "Partial result import skipped",
+	"log.padLayerMissing": "A net with ${1} pins has pads without layer information; skipped"
 }

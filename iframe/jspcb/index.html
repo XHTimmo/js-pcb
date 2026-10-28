@@ -478,6 +478,28 @@
 			color: #6db4ff;
 		}
 
+		.modal-actions {
+			display: flex;
+			justify-content: flex-end;
+			gap: 8px;
+			margin-top: 14px;
+		}
+
+		.modal-actions button {
+			flex: 0 0 auto;
+			min-width: 84px;
+		}
+
+		.modal-actions .btn-primary {
+			background: #3b82f6;
+			border: 1px solid #5aa7ff;
+			color: #ffffff;
+		}
+
+		.modal-actions .btn-primary:hover {
+			background: #4d9fff;
+		}
+
 		/* Main Content - Right Side */
 		.content {
 			flex: 1;
@@ -744,6 +766,21 @@
 			<div class="progress-area">
 				<div class="progress-track"><div id="progress-fill" class="progress-fill"></div></div>
 				<span id="progress-text">0 / 0</span>
+			</div>
+		</div>
+	</div>
+
+	<div id="confirm_modal" class="modal-mask" style="display: none;">
+		<div class="modal">
+			<div class="modal-header">
+				<h3 data-i18n="ui.confirmTitle">布线未完全布通</h3>
+			</div>
+			<div class="modal-body">
+				<p id="confirm_text"></p>
+				<div class="modal-actions">
+					<button id="confirm_yes" class="btn-primary" type="button" data-i18n="ui.confirmImport">导入</button>
+					<button id="confirm_no" type="button" data-i18n="ui.confirmSkip">取消</button>
+				</div>
 			</div>
 		</div>
 	</div>

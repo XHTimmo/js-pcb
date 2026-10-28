@@ -111,7 +111,7 @@ var js_pcb = js_pcb || {};
 			{
 				let terminal_radius, terminal_gap, terminal_x, terminal_y, terminal_z, terminal_shape;
 				[terminal_radius, terminal_gap, [terminal_x, terminal_y, terminal_z],  terminal_shape] = terminal;
-				// 按焊盘层着色：顶层红色、底层绿色、通孔（多层）白色
+				// 按焊盘层着色：顶层淡红色、底层淡蓝色、通孔（多层）淡灰色
 				let terminal_layers = terminal[4] || [];
 				let terminal_color = "#c7ccd4";
 				if (terminal_layers.length === 1)
@@ -162,16 +162,23 @@ var js_pcb = js_pcb || {};
 		}
 
 		//draw board outline (板框)
-		if (boundary && boundary.length > 1)
+		if (boundary && boundary.length)
 		{
-			let outline = boundary.concat([boundary[0]]);
-			pcb.append("path")
-				.attr("d", path_func(outline) + "Z")
-				.attr("stroke", "#facc15")
-				.attr("stroke-width", 1.2 / scale)
-				.attr("stroke-opacity", 0.9)
-				.attr("stroke-linejoin", "round")
-				.attr("fill", "none");
+			// 兼容单个 path（旧格式）和多个 path（外框 + 挖槽）
+			let outlines = (Array.isArray(boundary[0]) && boundary[0].length && Array.isArray(boundary[0][0]))
+				? boundary : [boundary];
+			for (let outline of outlines)
+			{
+				if (!outline || outline.length < 2) continue;
+				let closed = outline.concat([outline[0]]);
+				pcb.append("path")
+					.attr("d", path_func(closed) + "Z")
+					.attr("stroke", "#facc15")
+					.attr("stroke-width", 1.2 / scale)
+					.attr("stroke-opacity", 0.9)
+					.attr("stroke-linejoin", "round")
+					.attr("fill", "none");
+			}
 		}
 	}
 

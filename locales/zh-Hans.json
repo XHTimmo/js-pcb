@@ -76,5 +76,15 @@
 	"ui.errEmptyDsn": "DSN 内容为空",
 	"ui.errNormalize": "DSN 归一化失败",
 	"ui.errUnknown": "未知错误",
-	"ui.dialogTitle": "JS-PCB 自动布线"
+	"ui.dialogTitle": "JS-PCB 自动布线",
+	"ui.progressDone": "已布通 ${1}/${2}",
+	"ui.confirmTitle": "布线未完全布通",
+	"ui.confirmImport": "导入结果",
+	"ui.confirmSkip": "取消",
+	"toast.partialConfirm": "仅布通 ${1}/${2} 个网络，是否导入部分结果？",
+	"toast.partialDone": "布线结束：已布通 ${1}/${2}（部分布通）",
+	"toast.timeoutDone": "布线超时：已布通 ${1}/${2}",
+	"log.partialImport": "已导入部分布线结果",
+	"log.partialSkip": "已跳过导入部分结果",
+	"log.padLayerMissing": "某网络有 ${1} 个引脚缺少焊盘层信息，已跳过"
 }

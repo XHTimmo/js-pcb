@@ -9,6 +9,7 @@ let isDsnNormalized = false;  // 是否已做 DSN 归一化
 let routingTimer = null;
 let routingStartTime = 0;
 let isRouting = false;
+let routingGeneration = 0;
 
 function t(key, ...args)
 {
@@ -78,6 +79,7 @@ function setRoutingState(running)
 
 function stopRouting()
 {
+	routingGeneration++;
 	if (worker !== null)
 	{
 		try { worker.terminate(); } catch (e) {}
@@ -88,18 +90,54 @@ function stopRouting()
 	appendLog(t('log.stopped'));
 }
 
-function setProgress(done, total)
+function setProgress(done, total, completed)
 {
 	const fill = document.getElementById('progress-fill');
 	const text = document.getElementById('progress-text');
-	const pct = total > 0 ? Math.min(100, Math.round((done / total) * 100)) : 0;
+	const pct = completed ? 100 : (total > 0 ? Math.min(100, Math.round((done / total) * 100)) : 0);
 	if (fill) fill.style.width = pct + '%';
-	if (text) text.innerText = t('ui.progress', done, total, pct);
+	if (text) {
+		text.innerText = completed
+			? t('ui.progressDone', done, total)
+			: t('ui.progress', done, total, pct);
+	}
+}
+
+// 部分布通/超时结果：由用户决定是否导入
+function askImportPartial(routed, total)
+{
+	return new Promise(function(resolve) {
+		const modal = document.getElementById('confirm_modal');
+		const text = document.getElementById('confirm_text');
+		if (!modal || !text) { resolve(false); return; }
+		text.innerText = t('toast.partialConfirm', routed, total);
+		modal.style.display = 'flex';
+
+		const yes = document.getElementById('confirm_yes');
+		const no = document.getElementById('confirm_no');
+		function cleanup(value) {
+			modal.style.display = 'none';
+			yes.onclick = null;
+			no.onclick = null;
+			modal.onclick = null;
+			document.removeEventListener('keydown', onKey);
+			resolve(value);
+		}
+		function onKey(e) {
+			if (e.key === 'Escape') cleanup(false);
+		}
+		yes.onclick = function() { cleanup(true); };
+		no.onclick = function() { cleanup(false); };
+		modal.onclick = function(e) { if (e.target === modal) cleanup(false); };
+		document.addEventListener('keydown', onKey);
+	});
 }
 
 async function handleOnGo(evt)
 {
 	if (isRouting) { stopRouting(); return; }
+
+	const generation = ++routingGeneration;
 
 	if (file !== null)
 	{
@@ -131,7 +169,13 @@ async function handleOnGo(evt)
 			workerBlobUrl = null;
 		}
 		try {
-			worker = await createRoutingWorker();
+			const newWorker = await createRoutingWorker();
+			// 创建期间用户可能已停止/重新开始；过期 Worker 直接丢弃，避免覆盖新任务
+			if (generation !== routingGeneration || !isRouting) {
+				try { newWorker.terminate(); } catch (e) {}
+				return;
+			}
+			worker = newWorker;
 		} catch (e) {
 			const msg = e && e.message ? e.message : String(e);
 			appendLog(t('log.workerCreateFail', msg));
@@ -139,14 +183,9 @@ async function handleOnGo(evt)
 			stopTimer();
 			return;
 		}
-		// 创建过程中用户点击了“停止布线”
-		if (!isRouting) {
-			try { worker.terminate(); } catch (e) {}
-			worker = null;
-			return;
-		}
 		worker.addEventListener('message', function(event)
 		{
+			if (generation !== routingGeneration) return;
 			// 进度条更新
 			if (event.data.type === 'progress') {
 				setProgress(event.data.done || 0, event.data.total || 0);
@@ -173,7 +212,7 @@ async function handleOnGo(evt)
 				return;
 			}
 
-			// 一次采样结束（正常完成或超时）
+			// 一次采样结束（完整布通 / 部分布通 / 超时）
 			if (event.data.type === 'done') {
 				lastPcbData = event.data.data;
 				js_pcb.view_pcb(lastPcbData, 0, 2, currentBoundary);
@@ -182,9 +221,22 @@ async function handleOnGo(evt)
 				const total = event.data.total || 0;
 				const unrouted = event.data.unrouted || 0;
 				const routed = Math.max(0, total - unrouted);
-				setProgress(routed, total);
-				showToast(t('toast.done', routed, total), unrouted ? 'warn' : 'success', 4);
-				importResultToPcb(lastPcbData);
+				const status = event.data.status || (unrouted > 0 ? 'partial' : 'complete');
+
+				// 进程已结束，进度条置满；文字显示实际布通数量
+				setProgress(routed, total, true);
+
+				if (status === 'complete' || unrouted === 0) {
+					showToast(t('toast.done', routed, total), 'success', 4);
+					importResultToPcb(lastPcbData, false);
+				} else {
+					const toastKey = status === 'timeout' ? 'toast.timeoutDone' : 'toast.partialDone';
+					showToast(t(toastKey, routed, total), 'warn', 4);
+					askImportPartial(routed, total).then(function(ok) {
+						if (ok) importResultToPcb(lastPcbData, true);
+						else appendLog(t('log.partialSkip'));
+					});
+				}
 				return;
 			}
 
@@ -205,6 +257,7 @@ async function handleOnGo(evt)
 		// 捕获 worker 加载/运行失败（例如跨域或脚本异常）
 		worker.addEventListener('error', function(event)
 		{
+			if (generation !== routingGeneration) return;
 			appendLog(t('log.workerRuntime', event.message || ''));
 			setRoutingState(false);
 			stopTimer();
@@ -245,7 +298,7 @@ function appendLog(message) {
 }
 
 //布线完成后自动导入 SES
-async function importResultToPcb(pcbData)
+async function importResultToPcb(pcbData, partial)
 {
 	if (!pcbData || !originalFile) return;
 
@@ -270,7 +323,7 @@ async function importResultToPcb(pcbData)
 			const sesFile = new File([sesContent], fileName + '.ses', { type: 'text/plain' });
 			try {
 				await eda.pcb_Document.importAutoRouteSesFile(sesFile);
-				appendLog(t('log.imported'));
+				appendLog(t(partial ? 'log.partialImport' : 'log.imported'));
 			} catch (e) {
 				console.error('[jspcb][eda] import failed', e);
 				appendLog(t('log.importFail', e && e.message ? e.message : e));

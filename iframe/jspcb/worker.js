@@ -1,5 +1,19 @@
 importScripts('mymath.js', 'layer.js', 'router.js');
 
+function pcb_stats(pcb_data)
+{
+	let total = 0;
+	let unrouted = 0;
+	let tracks = (pcb_data && pcb_data[1]) ? pcb_data[1] : [];
+	for (let track of tracks)
+	{
+		if (!(track[0] > 0)) continue; // 无电气连接的虚拟网络
+		total++;
+		if (!track[4] || track[4].length === 0) unrouted++;
+	}
+	return { total: total, unrouted: unrouted, routed: total - unrouted };
+}
+
 function pcb_thread(paramater_array)
 {
 	//generate range of routing vectors
@@ -66,6 +80,7 @@ function pcb_thread(paramater_array)
 	let best_pcb = current_pcb.output_pcb();
 	postMessage(best_pcb);
 	let best_cost = Infinity;
+	let timed_out = false;
 	for (let i = 0; i < arg_s; ++i)
 	{
 		// 发送日志消息
@@ -80,6 +95,7 @@ function pcb_thread(paramater_array)
 		{
 			if (current_pcb.m_timedout)
 			{
+				timed_out = true;
 				// 已到超时时间：保留目前的最佳结果并结束，避免无限等待。
 				let routed_cost = current_pcb.cost();
 				if (routed_cost < best_cost)
@@ -129,15 +145,25 @@ function pcb_thread(paramater_array)
 		}
 	}
 	
-	const total_nets = current_pcb.connected_nets();
-	const unrouted = current_pcb.unrouted_nets();
-	postMessage({type: 'progress', done: total_nets - unrouted, total: total_nets});
+	// 统计必须与最终返回的 best_pcb 一致，而不是最后一次采样的 current_pcb
+	const stats = pcb_stats(best_pcb);
+	let status = 'complete';
+	if (stats.unrouted > 0) status = timed_out ? 'timeout' : 'partial';
+
+	postMessage({type: 'progress', done: stats.routed, total: stats.total});
 	postMessage({
 		type: 'log',
 		key: 'log.allDone',
-		args: [total_nets - unrouted, total_nets, unrouted]
+		args: [stats.routed, stats.total, stats.unrouted]
 	});
-	postMessage({type: 'done', data: best_pcb, cost: best_cost, unrouted: unrouted, total: total_nets});
+	postMessage({
+		type: 'done',
+		data: best_pcb,
+		cost: best_cost,
+		unrouted: stats.unrouted,
+		total: stats.total,
+		status: status
+	});
 }
 
 //thread event listner

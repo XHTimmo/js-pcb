@@ -1,5 +1,5 @@
 {
-	"name": "auto-routing-with-jspcb",
+	"name": "js-pcb-autorouter",
 	"uuid": "fe81c92e8cae445f9e4e4117058555f5",
 	"displayName": "JsPCB自动布线",
 	"description": "基于 JS-PCB 的自动布线器",
@@ -14,12 +14,7 @@
 		"url": ""
 	},
 	"categories": "PCB",
-	"keywords": [
-		"Autorouter",
-		"PCB",
-		"Routing",
-		"JS-PCB"
-	],
+	"keywords": ["Autorouter", "PCB", "Routing", "JS-PCB"],
 	"images": {
 		"logo": "./images/logo.png"
 	},
@@ -31,7 +26,7 @@
 	"headerMenus": {
 		"pcb": [
 			{
-				"id": "JsPCB",
+				"id": "JSPCB",
 				"title": "JsPCB自动布线",
 				"menuItems": [
 					{

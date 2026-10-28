@@ -11,7 +11,7 @@
 - **焊盘分层显示**：顶层焊盘淡红色、底层焊盘淡蓝色、通孔焊盘淡灰色；走线与同层焊盘同色。
 - **板框显示与约束**：绘制真实 DSN 板框（含凹槽），并作为布线障碍。
 - **开始 / 停止**：布线中按钮变为“停止布线”，可随时终止并再次开始。
-- **自动导入 SES**：布线完成后直接导入当前 PCB，无需手动操作。
+- **自动导入 SES**：完全布通后自动导入；存在未布通网络或超时时，会弹窗由你决定是否导入部分结果。
 - **详细日志**：预览区底部显示带时间戳的工作日志，附进度条和已布通比例。
 - **间距控制**：按 DSN 中每个网络的间距布线，并提供全局“额外间距”。
 - **板边安全**：走线/过孔与板框保持间距。
@@ -74,6 +74,7 @@ npm run build
 - JS-PCB 引擎较简单，高密度或复杂板可能布通率较低。
 - 某个网络连续 4 次仍无法布通时会被跳过，以便其余网络完成；结束吐司/日志会报告已布通和未布通数量。
 - 部分 DRC 可能来自 PCB 布局本身（例如焊盘间距不足），或 EDA 中未包含在 DSN 里的规则。
+- 未包含在 DSN boundary 中的内部禁布区（keepout）暂不参与碰撞检查。
 
 ## 许可证
 
@@ -109,7 +110,7 @@ open-source [JS-PCB](https://github.com/vygr/JS-PCB) engine.
 - **Layer-aware preview** — top-layer pads and traces are light red, bottom-layer pads and traces are light blue, through-hole pads are light gray.
 - **Board outline** — the real DSN board outline (including cut-outs) is drawn and used as a routing constraint.
 - **Start / stop** — the button switches to **Stop** while routing; you can stop and start again at any time.
-- **Automatic SES import** — the routing result is imported into the current PCB immediately after routing finishes.
+- **SES import** — fully routed boards are imported automatically; partial or timed-out results ask for confirmation before importing.
 - **Detailed log** — timestamped work log at the bottom of the preview, with a progress bar and routed-net ratio.
 - **Clearance control** — uses each net's clearance from the DSN and provides an extra global clearance margin.
 - **Board-edge safety** — traces and vias keep clearance from the board outline.
@@ -172,6 +173,7 @@ those DRC errors come from the layout itself and cannot be fixed by the router.
 - JS-PCB is a relatively simple routing engine; dense or complex boards may have a low completion rate.
 - A net that still fails after 4 attempts is skipped so the remaining nets can finish; the completion toast/log reports the routed/unrouted counts.
 - Some DRC errors may come from the PCB layout (pad-to-pad spacing) or from EDA-specific rules that are not represented in the DSN.
+- Keepout regions not present in the DSN boundary are not used as routing obstacles yet.
 
 ## License
 

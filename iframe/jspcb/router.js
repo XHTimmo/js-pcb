@@ -26,6 +26,7 @@ var js_pcb = js_pcb || {};
 	//aabb of terminals
 	function aabb_terminals(terms, quantization)
 	{
+		if (!terms || !terms.length) return [0, [0, 0, 0, 0]];
 		let minx = (Math.trunc(terms[0][2][0]) / quantization) * quantization;
 		let miny = (Math.trunc(terms[0][2][1]) / quantization) * quantization;
 		let maxx = ((Math.trunc(terms[0][2][0]) + (quantization - 1)) / quantization) * quantization;
@@ -44,34 +45,37 @@ var js_pcb = js_pcb || {};
 		return [(maxx - minx) * (maxy - miny), [minx, miny, maxx, maxy]];
 	}
 
-	// 把网格坐标打包成一个数值作为 Map 的 key。
-	// 原实现用 n.toString()（"x,y,z"），洪水填充每个网格点都要创建/解析字符串，
-	// 大板子上会占用绝大部分布线时间。这里用数值 key，量化后无碰撞。
-	const NODE_KEY_Y = 1048576; // 2^20
-	const NODE_KEY_Z = 64;      // 支持最多 64 层
-	function node_key(n)
+	// 无碰撞的默认 key（节点坐标异常时使用）。
+	function default_node_key(n)
 	{
-		return (n[0] * NODE_KEY_Y + n[1]) * NODE_KEY_Z + n[2];
+		return 'oob:' + n[0] + ',' + n[1] + ',' + n[2];
 	}
 
-	//set class
+	// NodeSet 使用调用方提供的 key 函数。Pcb 会传入基于板子尺寸、
+	// 带范围校验的数值 key；超出范围或非整数坐标自动退化为字符串 key，
+	// 避免固定基数编码在超大坐标/超精度时发生碰撞。
 	class NodeSet
 	{
-		constructor(init)
+		constructor(init, keyFn)
 		{
+			this._key = keyFn || default_node_key;
 			if (init === undefined) this._data = new Map();
-			else if (init instanceof NodeSet) this._data = new Map(init._data);
+			else if (init instanceof NodeSet)
+			{
+				this._data = new Map(init._data);
+				this._key = init._key;
+			}
 			else
 			{
 				this._data = new Map();
-				for (let n of init) this._data.set(node_key(n), n);
+				for (let n of init) this._data.set(this._key(n), n);
 			}
 			this.size = this._data.size;
 		}
 
 		add(n)
 		{
-			let k = node_key(n);
+			let k = this._key(n);
 			if (!this._data.has(k))
 			{
 				this._data.set(k, n);
@@ -81,7 +85,7 @@ var js_pcb = js_pcb || {};
 
 		has(n)
 		{
-			return this._data.has(node_key(n));
+			return this._data.has(this._key(n));
 		}
 
 		[Symbol.iterator]()
@@ -113,6 +117,25 @@ var js_pcb = js_pcb || {};
 			this.m_netlist = [];
 			this.m_nodes = new Uint32Array(this.m_stride * this.m_depth);
 			this.m_via_vectors = [[[0, 0, -1], [0, 0, 1]], [[0, 0, -1], [0, 0, 1]]];
+			// 使用板子尺寸作为编码基数：key = (z * height + y) * width + x。
+			// 所有节点都在 [0,width) x [0,height) x [0,depth) 内，因此不会碰撞；
+			// 越界/非整数节点退化为字符串 key（Map 的 number/string key 不会互相冲突）。
+			const w_key = this.m_width;
+			const h_key = this.m_height;
+			const d_key = this.m_depth;
+			const numeric_safe = (w_key > 0 && h_key > 0 && d_key > 0 &&
+				w_key * h_key * d_key <= Number.MAX_SAFE_INTEGER);
+			this.m_node_key = function(n)
+			{
+				const x = n[0], y = n[1], z = n[2];
+				if (numeric_safe &&
+					Number.isInteger(x) && Number.isInteger(y) && Number.isInteger(z) &&
+					x >= 0 && x < w_key && y >= 0 && y < h_key && z >= 0 && z < d_key)
+				{
+					return (z * h_key + y) * w_key + x;
+				}
+				return default_node_key(n);
+			};
 		}
 
 		//add net
@@ -127,7 +150,14 @@ var js_pcb = js_pcb || {};
 		//clearance from the board edge (points are in board space)
 		add_wall(points, gap)
 		{
-			if (!points || points.length < 2) return;
+			if (!points || !points.length) return;
+			// 支持多个 boundary path（外框 + 挖槽/开孔）
+			if (Array.isArray(points[0]) && points[0].length && Array.isArray(points[0][0]))
+			{
+				for (let poly of points) this.add_wall(poly, gap);
+				return;
+			}
+			if (points.length < 2) return;
 			for (let i = 0; i < points.length; ++i)
 			{
 				let a = points[i];
@@ -423,21 +453,27 @@ var js_pcb = js_pcb || {};
 			let distance = 1;
 			let frontier = new NodeSet(starts);
 			let vias_nodes = new Map();
+			let ticks = 0;
 			while (frontier.size || vias_nodes.size)
 			{
+				if (((ticks++ & 0x3ff) === 0) && Date.now() >= this.m_deadline) return false;
 				for (let node of frontier) sn.call(this, node, distance);
 				if (ends.every((node) => { return gn.call(this, node); })) break;
-				let new_nodes = new NodeSet();
+				let new_nodes = new NodeSet(undefined, this.m_node_key);
+				let inner = 0;
 				for (let node of frontier)
 				{
+					if (((inner++ & 0x3ff) === 0) && Date.now() >= this.m_deadline) return false;
 					for (let new_node of ans.call(this, anm.call(this, vec, node), node, radius, gap))
 					{
 						new_nodes.add(new_node);
 					}
 				}
-				let new_vias_nodes = new NodeSet();
+				let new_vias_nodes = new NodeSet(undefined, this.m_node_key);
+				inner = 0;
 				for (let node of frontier)
 				{
+					if (((inner++ & 0x3ff) === 0) && Date.now() >= this.m_deadline) return false;
 					for (let new_node of ans.call(this, anm.call(this, via_vectors, node), node, via, gap))
 					{
 						new_vias_nodes.add(new_node);
@@ -453,6 +489,7 @@ var js_pcb = js_pcb || {};
 				frontier = new_nodes;
 				distance++;
 			}
+			return true;
 		}
 
 		//set all grid values back to 0
@@ -494,15 +531,28 @@ var js_pcb = js_pcb || {};
 		}
 	}
 
-	// 焊盘可用的层。dsn2pcb 会为每个 terminal 附带层列表（第 5 项）；
-	// 老格式没有该字段时按通孔处理（所有层可用）。
-	function terminal_layers(node, depth)
+	// 连通性：只允许焊盘实际存在的层。缺失层信息时返回空数组，
+	// 该网络会被判定为无法布线，避免把单层焊盘误当成跨层可连接。
+	function terminal_connect_layers(node)
+	{
+		return (node[4] && node[4].length) ? node[4] : [];
+	}
+
+	// 碰撞：层信息缺失时保守地阻挡所有层，避免走线穿过未知焊盘。
+	function terminal_collision_layers(node, depth)
 	{
 		let layers = node[4];
 		if (layers && layers.length) return layers;
 		let all = [];
 		for (let z = 0; z < depth; ++z) all.push(z);
 		return all;
+	}
+
+	// 焊盘在第 z 层的实际几何（多层 padstack 可能每层形状/尺寸不同）
+	function terminal_layer_shape(node, z)
+	{
+		let shapes = node[5];
+		return (shapes && shapes[z]) ? shapes[z] : null;
 	}
 
 	//scale terminals for resolution of grid
@@ -518,6 +568,18 @@ var js_pcb = js_pcb || {};
 			{
 				p[0] *= res;
 				p[1] *= res;
+			}
+			// 每层独立的焊盘几何
+			let layer_shapes = term[5] || [];
+			for (let ls of layer_shapes)
+			{
+				if (!ls) continue;
+				ls.r *= res;
+				for (let p of ls.points)
+				{
+					p[0] *= res;
+					p[1] *= res;
+				}
 			}
 		}
 	}
@@ -559,16 +621,19 @@ var js_pcb = js_pcb || {};
 			let depth = this.m_pcb.m_depth;
 			for (let node of this.m_terminals)
 			{
-				let r, g, x, y, shape;
-				[r, g, [x, y, ,], shape] = node;
-				let layers = terminal_layers(node, depth);
-				if (!shape.length)
+				let g, x, y;
+				[, g, [x, y, ,]] = node;
+				let layers = terminal_collision_layers(node, depth);
+				for (let z of layers)
 				{
-					for (let z of layers) this.m_pcb.m_layers.add_line([x, y, z], [x, y, z], r, g);
-				}
-				else
-				{
-					for (let z of layers)
+					let layer_shape = terminal_layer_shape(node, z);
+					let r = layer_shape ? layer_shape.r : node[0];
+					let shape = layer_shape ? layer_shape.points : node[3];
+					if (!shape.length)
+					{
+						this.m_pcb.m_layers.add_line([x, y, z], [x, y, z], r, g);
+					}
+					else
 					{
 						let p1 = [x + shape[0][0], y + shape[0][1], z];
 						for (let i = 1; i < shape.length; ++i)
@@ -588,16 +653,19 @@ var js_pcb = js_pcb || {};
 			let depth = this.m_pcb.m_depth;
 			for (let node of this.m_terminals)
 			{
-				let r, g, x, y, shape;
-				[r, g, [x, y, ,], shape] = node;
-				let layers = terminal_layers(node, depth);
-				if (!shape.length)
+				let g, x, y;
+				[, g, [x, y, ,]] = node;
+				let layers = terminal_collision_layers(node, depth);
+				for (let z of layers)
 				{
-					for (let z of layers) this.m_pcb.m_layers.sub_line([x, y, z], [x, y, z], r, g);
-				}
-				else
-				{
-					for (let z of layers)
+					let layer_shape = terminal_layer_shape(node, z);
+					let r = layer_shape ? layer_shape.r : node[0];
+					let shape = layer_shape ? layer_shape.points : node[3];
+					if (!shape.length)
+					{
+						this.m_pcb.m_layers.sub_line([x, y, z], [x, y, z], r, g);
+					}
+					else
 					{
 						let p1 = [x + shape[0][0], y + shape[0][1], z];
 						for (let i = 1; i < shape.length; ++i)
@@ -684,8 +752,14 @@ var js_pcb = js_pcb || {};
 			let via_vectors = this.m_pcb.m_via_vectors;
 			let path = [];
 			let path_node = end_node;
+			let steps = 0;
 			for (;;)
 			{
+				if (((steps++ & 0x3ff) === 0) && Date.now() >= this.m_pcb.m_deadline)
+				{
+					this.m_pcb.m_timedout = true;
+					return [[], false];
+				}
 				path.push(path_node);
 				let nearer_nodes = [];
 				for (let node of this.m_pcb.all_not_shorting(
@@ -719,7 +793,7 @@ var js_pcb = js_pcb || {};
 			if (this.m_radius === 0.0) return true;
 			this.m_paths = [];
 			this.sub_terminal_collision_lines();
-			let visited = new NodeSet();
+			let visited = new NodeSet(undefined, this.m_pcb.m_node_key);
 			for (let index = 1; index < this.m_terminals.length; ++index)
 			{
 				// 单个多引脚网络可能需要很久，这里按引脚对检查超时，避免外层循环被长时间卡住。
@@ -730,8 +804,25 @@ var js_pcb = js_pcb || {};
 					return false;
 				}
 				let ends = [];
-				// 目标焊盘只在其实际存在的层上可达
-				for (let z of terminal_layers(this.m_terminals[index], this.m_pcb.m_depth))
+				// 目标焊盘只在其实际存在的层上可达；缺少层信息时拒绝布线，
+				// 而不是退化为“所有层都可连接”。
+				let target_layers = terminal_connect_layers(this.m_terminals[index]);
+				let start_layers = terminal_connect_layers(this.m_terminals[index-1]);
+				if (!target_layers.length || !start_layers.length)
+				{
+					if (!this.m_layerErrorLogged)
+					{
+						this.m_layerErrorLogged = true;
+						postMessage({
+							type: 'log',
+							key: 'log.padLayerMissing',
+							args: [this.m_terminals.length]
+						});
+					}
+					this.remove();
+					return false;
+				}
+				for (let z of target_layers)
 				{
 					let x = Math.trunc(this.m_terminals[index][2][0]+0.5);
 					let y = Math.trunc(this.m_terminals[index][2][1]+0.5);
@@ -740,14 +831,21 @@ var js_pcb = js_pcb || {};
 				let search = ends.find(function(node) { return visited.has(node); });
 				if (search !== undefined) continue;
 				// 起点焊盘同理：只在它自己的层上作为搜索起点
-				for (let z of terminal_layers(this.m_terminals[index-1], this.m_pcb.m_depth))
+				for (let z of start_layers)
 				{
 					let x = Math.trunc(this.m_terminals[index-1][2][0]+0.5);
 					let y = Math.trunc(this.m_terminals[index-1][2][1]+0.5);
 					visited.add([x, y, z]);
 				}
-				this.m_pcb.mark_distances(this.m_pcb.m_routing_flood_vectors, this.m_radius, this.m_via, this.m_gap,
+				let filled = this.m_pcb.mark_distances(this.m_pcb.m_routing_flood_vectors, this.m_radius, this.m_via, this.m_gap,
 					 						visited, ends);
+				if (!filled)
+				{
+					this.m_pcb.m_timedout = true;
+					this.m_pcb.unmark_distances();
+					this.remove();
+					return false;
+				}
 				let sorted_ends = [];
 				for (let node of ends) sorted_ends.push([this.m_pcb.get_node(node), node]);
 				sorted_ends.sort(function(s1, s2) { return s1[0] - s2[0]; });
@@ -755,6 +853,7 @@ var js_pcb = js_pcb || {};
 				this.m_pcb.unmark_distances();
 				if (!result[1])
 				{
+					if (Date.now() >= this.m_pcb.m_deadline) this.m_pcb.m_timedout = true;
 					this.remove();
 					return false;
 				}
