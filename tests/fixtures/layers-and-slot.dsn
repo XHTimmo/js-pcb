@@ -1,0 +1,28 @@
+(PCB "layers-and-slot"
+  (parser (host_cad "EasyEDA Pro") (host_version "3.2.0"))
+  (resolution mil 1000)
+  (structure
+    (layer TopLayer (type signal))
+    (layer BottomLayer (type signal))
+    (boundary
+      (path pcb 0 0 0 120 0 120 120 0 120 0 0)
+      (path pcb 0 50 40 70 40 70 80 50 80 50 40))
+    (via via0)
+    (rule (width 4) (clearance 4)))
+  (placement (component u1 (place u1 0 0 front 0)))
+  (library
+    (image u1
+      (pin top 1 20 60)
+      (pin bottom 2 100 60)
+      (pin through 3 100 100))
+    (padstack top (shape (circle TopLayer 8)))
+    (padstack bottom (shape (circle BottomLayer 8)))
+    (padstack through
+      (shape (circle TopLayer 8))
+      (shape (rect BottomLayer -8 -8 8 8)))
+    (padstack via0
+      (shape (circle TopLayer 20))
+      (shape (circle BottomLayer 20))))
+  (network
+    (net GND (pins u1-1 u1-2 u1-3))
+    (class GND 'GND' (circuit (use_via via0)) (rule (width 4) (clearance 4)))))

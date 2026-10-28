@@ -17,6 +17,13 @@ module.exports = {
 	proseWrap: 'preserve',
 	htmlWhitespaceSensitivity: 'css',
 	endOfLine: 'lf',
+	// Preserve the existing CRLF metadata files to avoid whole-file diffs in commits.
+	overrides: [
+		{
+			files: ['package.json', 'package-lock.json', '.prettierrc.js'],
+			options: { endOfLine: 'crlf' },
+		},
+	],
 	embeddedLanguageFormatting: 'auto',
 	singleAttributePerLine: false,
 	plugins: ['@trivago/prettier-plugin-sort-imports'],

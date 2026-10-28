@@ -1,631 +1,459 @@
-//filename and worker
+/**
+ * Integrates PR #3 with the interface and attribution retained from PR #2.
+ * Original contribution: summving <summving@easyeda.com> (@easyeda2021).
+ * https://github.com/XHTimmo/js-pcb/pull/3 — see NOTICE.md.
+ */
 let file = null;
-let originalFile = null;  // 保存归一化前的原始 DSN 内容
-let fileName = 'output';  // 文件名
+let originalFile = null;
+let fileName = 'output';
+let isDsnNormalized = false;
 let worker = null;
-let lastPcbData = null;   // 保存最后的布线结果
-let currentBoundary = null;  // 板框（与布线结果同一坐标系），用于预览
-let isDsnNormalized = false;  // 是否已做 DSN 归一化
-let routingTimer = null;
-let routingStartTime = 0;
-let isRouting = false;
+let currentBoundary = null;
+let lastPcbData = null;
+let lastResult = null;
+let currentTask = null;
 let routingGeneration = 0;
+let isRouting = false;
+let isImporting = false;
+let routingTimer = null;
+const HISTORY_KEY = 'js_pcb_history_v1';
+const HISTORY_LIMIT = 10;
+let historyRecords = loadHistory();
+let logRecords = [];
+let progressState = { done: 0, total: 0, completed: false };
 
-function t(key, ...args)
-{
-	if (window.jspcbI18n && window.jspcbI18n.t) return window.jspcbI18n.t(key, ...args);
-	return key;
+function t(key, ...args) {
+	return jspcbI18n.t(key, ...args);
 }
 
 function startTimer() {
 	stopTimer();
 	const display = document.getElementById('timer-display');
-	display.style.display = 'inline-block';
+	const start = Date.now();
+	display.style.display = 'block';
 	display.innerText = '00:00';
-	routingStartTime = Date.now();
-	
-	routingTimer = setInterval(() => {
-		const elapsed = Date.now() - routingStartTime;
-		const seconds = Math.floor(elapsed / 1000);
-		const mm = String(Math.floor(seconds / 60)).padStart(2, '0');
-		const ss = String(seconds % 60).padStart(2, '0');
-		display.innerText = `${mm}:${ss}`;
+	routingTimer = setInterval(function () {
+		const seconds = Math.floor((Date.now() - start) / 1000);
+		display.innerText = String(Math.floor(seconds / 60)).padStart(2, '0') + ':' + String(seconds % 60).padStart(2, '0');
 	}, 1000);
 }
 
 function stopTimer() {
-	if (routingTimer) {
-		clearInterval(routingTimer);
-		routingTimer = null;
+	if (routingTimer !== null) clearInterval(routingTimer);
+	routingTimer = null;
+}
+
+function loadHistory() {
+	try {
+		const records = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]');
+		return Array.isArray(records) ? records.slice(0, HISTORY_LIMIT) : [];
+	} catch (error) {
+		return [];
 	}
 }
 
-//go button handler
-let workerBlobUrl = null;
+function renderHistory() {
+	const list = document.getElementById('history_list');
+	list.innerHTML = '';
+	document.getElementById('history_empty').style.display = historyRecords.length ? 'none' : 'block';
+	for (const record of historyRecords) {
+		const item = document.createElement('div');
+		item.className = 'history-item';
+		const title = document.createElement('div');
+		title.className = 'history-title';
+		const name = document.createElement('span');
+		name.innerText = record.fileName || 'output';
+		const time = document.createElement('span');
+		time.innerText = new Date(record.createdAt).toLocaleString(jspcbI18n.getLang());
+		title.append(name, time);
+		const meta = document.createElement('div');
+		meta.className = 'history-meta';
+		const params = record.params || {};
+		meta.innerText = `S${params.s ?? ''} R${params.r ?? ''} Z${params.z ?? ''} ` + t('ui.historyGap', params.g ?? '');
+		const actions = document.createElement('div');
+		actions.className = 'history-actions';
+		const button = document.createElement('button');
+		button.type = 'button';
+		button.innerText = t('ui.downloadSes');
+		button.onclick = function () {
+			const stamp = new Date(record.createdAt).toISOString().replace(/[:.]/g, '-');
+			downloadSes(record.sesContent, (record.fileName || 'output') + '_' + stamp + '.ses');
+		};
+		actions.appendChild(button);
+		item.append(title, meta, actions);
+		list.appendChild(item);
+	}
+}
+
+function persistHistory() {
+	localStorage.setItem(HISTORY_KEY, JSON.stringify(historyRecords));
+}
+
+function sesForResult(result) {
+	const info = parseDsnInfo(result.originalFile);
+	info.fileName = result.fileName;
+	info.isDsnNormalized = result.isDsnNormalized;
+	return convertPcbToSes(result.data, info, { gap: result.params.g });
+}
+
+function addHistoryRecord(result) {
+	try {
+		const timestamp = Date.now();
+		historyRecords.unshift({
+			id: String(timestamp),
+			fileName: result.fileName,
+			createdAt: timestamp,
+			params: result.params,
+			status: result.status,
+			sesContent: sesForResult(result),
+		});
+		historyRecords = historyRecords.slice(0, HISTORY_LIMIT);
+		persistHistory();
+		renderHistory();
+	} catch (error) {
+		appendLog('log.historyFail', error.message);
+	}
+}
+
+function downloadSes(content, name) {
+	if (!content) return;
+	const url = URL.createObjectURL(new Blob([content], { type: 'text/plain' }));
+	const link = document.createElement('a');
+	link.href = url;
+	link.download = name;
+	document.body.appendChild(link);
+	link.click();
+	link.remove();
+	URL.revokeObjectURL(url);
+}
+
+function getCurrentParams() {
+	return Object.fromEntries(
+		['g', 'c', 't', 'v', 's', 'z', 'r', 'q', 'd', 'fr', 'xr', 'yr'].map(function (key) {
+			const input = document.getElementById('arg_' + key);
+			if (!input.checkValidity()) throw new Error(t('error.parameter', key));
+			return [key, Number(input.value)];
+		}),
+	);
+}
+
+function updateControls() {
+	const go = document.getElementById('go');
+	const key = isRouting ? 'ui.stop' : 'ui.start';
+	go.setAttribute('data-i18n', key);
+	go.innerText = t(key);
+	go.classList.toggle('stop-mode', isRouting);
+	go.disabled = isImporting;
+	document.getElementById('export_ses').disabled = isRouting || isImporting || !lastResult;
+	for (const element of document.querySelectorAll('.param-row input, .step-btn, #auto_import, #files, #load_dsn_eda')) {
+		element.disabled = isRouting || isImporting;
+	}
+}
+
+function setProgress(done, total, completed = false) {
+	progressState = { done: done, total: total, completed: completed };
+	const percent = completed ? 100 : total ? Math.min(100, Math.round((done / total) * 100)) : 0;
+	document.getElementById('progress-fill').style.width = percent + '%';
+	document.getElementById('progress-text').innerText = completed ? t('ui.progressDone', done, total) : t('ui.progress', done, total, percent);
+}
+
+function renderLogRecord(record) {
+	const container = document.getElementById('log-content');
+	const entry = document.createElement('div');
+	entry.className = 'log-entry';
+	const timestamp = new Date(record.time).toLocaleTimeString(jspcbI18n.getLang(), { hour12: false });
+	entry.innerText = '[' + timestamp + '] ' + jspcbUi.formatLog(record.message, record.args);
+	container.appendChild(entry);
+	container.scrollTop = container.scrollHeight;
+}
+
+function renderLogs() {
+	document.getElementById('log-content').innerHTML = '';
+	logRecords.forEach(renderLogRecord);
+}
+
+function appendLog(message, ...args) {
+	const record = { message: message, args: args, time: Date.now() };
+	logRecords.push(record);
+	renderLogRecord(record);
+}
 
 async function loadTextFile(relativePath) {
 	if (typeof eda !== 'undefined' && eda?.sys_FileSystem?.getExtensionFile) {
-		const f = await eda.sys_FileSystem.getExtensionFile('/iframe/jspcb/' + relativePath);
-		if (f) return await f.text();
+		const extensionFile = await eda.sys_FileSystem.getExtensionFile('/iframe/jspcb/' + relativePath);
+		if (extensionFile) return await extensionFile.text();
 	}
-	const r = await fetch('/iframe/jspcb/' + relativePath);
-	return await r.text();
+	const response = await fetch('/iframe/jspcb/' + relativePath);
+	if (!response.ok) throw new Error('Cannot load ' + relativePath);
+	return await response.text();
 }
 
 async function createRoutingWorker() {
 	try {
 		return new Worker('/iframe/jspcb/worker.js');
-	} catch (e) {
+	} catch (error) {
+		/* Use a Blob in restricted iframe environments. */
 	}
-
-	const mymath = await loadTextFile('mymath.js');
-	const layer = await loadTextFile('layer.js');
-	const router = await loadTextFile('router.js');
-	const workerSource = await loadTextFile('worker.js');
-	const cleanedWorker = workerSource.replace(/^\s*importScripts\([^\)]*\);\s*/m, '');
-	const combined = `${mymath}\n${layer}\n${router}\n${cleanedWorker}\n`;
-	workerBlobUrl = URL.createObjectURL(new Blob([combined], { type: 'application/javascript' }));
-	return new Worker(workerBlobUrl);
-}
-
-function setRoutingState(running)
-{
-	isRouting = running;
-	const btn = document.getElementById('go');
-	if (!btn) return;
-	btn.innerText = running ? t('ui.stop') : t('ui.start');
-	btn.classList.toggle('stop-mode', running);
-}
-
-function stopRouting()
-{
-	routingGeneration++;
-	if (worker !== null)
-	{
-		try { worker.terminate(); } catch (e) {}
-		worker = null;
-	}
-	setRoutingState(false);
-	stopTimer();
-	appendLog(t('log.stopped'));
-}
-
-function setProgress(done, total, completed)
-{
-	const fill = document.getElementById('progress-fill');
-	const text = document.getElementById('progress-text');
-	const pct = completed ? 100 : (total > 0 ? Math.min(100, Math.round((done / total) * 100)) : 0);
-	if (fill) fill.style.width = pct + '%';
-	if (text) {
-		text.innerText = completed
-			? t('ui.progressDone', done, total)
-			: t('ui.progress', done, total, pct);
-	}
-}
-
-// 部分布通/超时结果：由用户决定是否导入
-function askImportPartial(routed, total)
-{
-	return new Promise(function(resolve) {
-		const modal = document.getElementById('confirm_modal');
-		const text = document.getElementById('confirm_text');
-		if (!modal || !text) { resolve(false); return; }
-		text.innerText = t('toast.partialConfirm', routed, total);
-		modal.style.display = 'flex';
-
-		const yes = document.getElementById('confirm_yes');
-		const no = document.getElementById('confirm_no');
-		function cleanup(value) {
-			modal.style.display = 'none';
-			yes.onclick = null;
-			no.onclick = null;
-			modal.onclick = null;
-			document.removeEventListener('keydown', onKey);
-			resolve(value);
-		}
-		function onKey(e) {
-			if (e.key === 'Escape') cleanup(false);
-		}
-		yes.onclick = function() { cleanup(true); };
-		no.onclick = function() { cleanup(false); };
-		modal.onclick = function(e) { if (e.target === modal) cleanup(false); };
-		document.addEventListener('keydown', onKey);
-	});
-}
-
-async function handleOnGo(evt)
-{
-	if (isRouting) { stopRouting(); return; }
-
-	const generation = ++routingGeneration;
-
-	if (file !== null)
-	{
-		//params
-		let arg_g = +document.getElementById('arg_g').value;
-		let arg_c = +document.getElementById('arg_c').value;
-		let arg_t = +document.getElementById('arg_t').value;
-		let arg_v = +document.getElementById('arg_v').value;
-		let arg_s = +document.getElementById('arg_s').value;
-		let arg_z = +document.getElementById('arg_z').value;
-		let arg_r = +document.getElementById('arg_r').value;
-		let arg_q = +document.getElementById('arg_q').value;
-		let arg_d = +document.getElementById('arg_d').value;
-		let arg_fr = +document.getElementById('arg_fr').value;
-		let arg_xr = +document.getElementById('arg_xr').value;
-		let arg_yr = +document.getElementById('arg_yr').value;
-
-		// Reset log UI
-		document.getElementById('log-content').innerHTML = ''; // Clear logs
-		appendLog(t('log.init'));
-		setRoutingState(true);
-		setProgress(0, 0);
-		startTimer();
-
-		//run pcb solver web worker thread, register output listner
-		if (worker !== null) worker.terminate();
-		if (workerBlobUrl) {
-			try { URL.revokeObjectURL(workerBlobUrl); } catch {}
-			workerBlobUrl = null;
-		}
-		try {
-			const newWorker = await createRoutingWorker();
-			// 创建期间用户可能已停止/重新开始；过期 Worker 直接丢弃，避免覆盖新任务
-			if (generation !== routingGeneration || !isRouting) {
-				try { newWorker.terminate(); } catch (e) {}
-				return;
-			}
-			worker = newWorker;
-		} catch (e) {
-			const msg = e && e.message ? e.message : String(e);
-			appendLog(t('log.workerCreateFail', msg));
-			setRoutingState(false);
-			stopTimer();
-			return;
-		}
-		worker.addEventListener('message', function(event)
-		{
-			if (generation !== routingGeneration) return;
-			// 进度条更新
-			if (event.data.type === 'progress') {
-				setProgress(event.data.done || 0, event.data.total || 0);
-				return;
-			}
-
-			// Handle log messages (structured keys from worker/router)
-			if (event.data.type === 'log') {
-				const key = event.data.key;
-				const text = key ? t(key, ...(event.data.args || [])) : event.data.message;
-				appendLog(text);
-				if (key === 'log.allDone') {
-					setRoutingState(false);
-					stopTimer();
-				}
-				return;
-			}
-
-			// Worker 内部异常：恢复界面，避免一直卡在“开始布线”状态
-			if (event.data.type === 'error') {
-				appendLog(t('log.routeError', event.data.message));
-				setRoutingState(false);
-				stopTimer();
-				return;
-			}
-
-			// 一次采样结束（完整布通 / 部分布通 / 超时）
-			if (event.data.type === 'done') {
-				lastPcbData = event.data.data;
-				js_pcb.view_pcb(lastPcbData, 0, 2, currentBoundary);
-				setRoutingState(false);
-				stopTimer();
-				const total = event.data.total || 0;
-				const unrouted = event.data.unrouted || 0;
-				const routed = Math.max(0, total - unrouted);
-				const status = event.data.status || (unrouted > 0 ? 'partial' : 'complete');
-
-				// 进程已结束，进度条置满；文字显示实际布通数量
-				setProgress(routed, total, true);
-
-				if (status === 'complete' || unrouted === 0) {
-					showToast(t('toast.done', routed, total), 'success', 4);
-					importResultToPcb(lastPcbData, false);
-				} else {
-					const toastKey = status === 'timeout' ? 'toast.timeoutDone' : 'toast.partialDone';
-					showToast(t(toastKey, routed, total), 'warn', 4);
-					askImportPartial(routed, total).then(function(ok) {
-						if (ok) importResultToPcb(lastPcbData, true);
-						else appendLog(t('log.partialSkip'));
-					});
-				}
-				return;
-			}
-
-			// Handle legacy array data (result)
-			let pcbData = event.data;
-			if (event.data.type === 'result') {
-				pcbData = event.data.data;
-			}
-
-			if (pcbData && pcbData.length)
-			{
-				// 布线过程中的动态预览快照
-				lastPcbData = pcbData;
-				js_pcb.view_pcb(pcbData, 0, 2, currentBoundary);
-			}
-		}, false);
-
-		// 捕获 worker 加载/运行失败（例如跨域或脚本异常）
-		worker.addEventListener('error', function(event)
-		{
-			if (generation !== routingGeneration) return;
-			appendLog(t('log.workerRuntime', event.message || ''));
-			setRoutingState(false);
-			stopTimer();
-		}, false);
-
-		//post to solver thread
-		try {
-			const pcbData = js_pcb.dsn2pcb(file, arg_g, arg_c);
-			currentBoundary = Array.isArray(pcbData[2]) ? pcbData[2] : null;
-			const totalNets = pcbData[1].filter(function(t) { return t[0] > 0; }).length;
-			setProgress(0, totalNets);
-			worker.postMessage([pcbData,
-						arg_t, arg_v, arg_s, arg_z, arg_r, arg_q, arg_d, arg_fr, arg_xr, arg_yr]);
-		} catch (e) {
-			// DSN 解析失败时也必须恢复界面，否则按钮会一直处于禁用状态
-			appendLog(t('log.dsnParseFail', e && e.message ? e.message : String(e)));
-			setRoutingState(false);
-			stopTimer();
-		}
-	}
-}
-
-function appendLog(message) {
-	let logContainer = document.getElementById('log-content');
-	let entry = document.createElement('div');
-	entry.className = 'log-entry';
-
-	const now = new Date();
-	const ts = String(now.getHours()).padStart(2, '0') + ':' +
-		String(now.getMinutes()).padStart(2, '0') + ':' +
-		String(now.getSeconds()).padStart(2, '0');
-	entry.innerText = '[' + ts + '] ' + message;
-	logContainer.appendChild(entry);
-
-	// Auto scroll to bottom
-	logContainer.scrollTop = logContainer.scrollHeight;
-
-}
-
-//布线完成后自动导入 SES
-async function importResultToPcb(pcbData, partial)
-{
-	if (!pcbData || !originalFile) return;
-
+	const sources = await Promise.all(['mymath.js', 'layer.js', 'router.js', 'worker.js'].map(loadTextFile));
+	sources[3] = sources[3].replace(/^\s*importScripts\([^)]*\);\s*/m, '');
+	const url = URL.createObjectURL(new Blob([sources.join('\n')], { type: 'application/javascript' }));
 	try {
-		const hasTracks = Array.isArray(pcbData[1]) && pcbData[1].some(function(t) {
-			return t[4] && t[4].length;
-		});
-		if (!hasTracks) {
-			appendLog(t('log.noTracks'));
+		const candidate = new Worker(url);
+		candidate.jspcbBlobUrl = url;
+		return candidate;
+	} catch (error) {
+		URL.revokeObjectURL(url);
+		throw error;
+	}
+}
+
+function releaseWorker(candidate) {
+	if (!candidate) return;
+	candidate.terminate();
+	if (candidate.jspcbBlobUrl) URL.revokeObjectURL(candidate.jspcbBlobUrl);
+	if (worker === candidate) worker = null;
+}
+
+function invalidateTask() {
+	routingGeneration++;
+	jspcbUi.cancelImportConfirmation();
+	releaseWorker(worker);
+	currentTask = null;
+	isRouting = false;
+	stopTimer();
+}
+
+function stopRouting() {
+	invalidateTask();
+	updateControls();
+	appendLog('log.stopped');
+}
+
+function finishTask(task) {
+	if (task.generation !== routingGeneration) return;
+	isRouting = false;
+	stopTimer();
+	releaseWorker(worker);
+	updateControls();
+}
+
+async function handleOnGo() {
+	if (isImporting) return;
+	if (isRouting) {
+		stopRouting();
+		return;
+	}
+	if (!file) return;
+	invalidateTask();
+	const task = { generation: routingGeneration, originalFile: originalFile, fileName: fileName, isDsnNormalized: isDsnNormalized };
+	currentTask = task;
+	lastResult = null;
+	logRecords = [];
+	renderLogs();
+	appendLog('log.init');
+	try {
+		task.params = getCurrentParams();
+		isRouting = true;
+		updateControls();
+		startTimer();
+		task.autoImport = document.getElementById('auto_import').checked;
+		const p = task.params;
+		const pcb = js_pcb.dsn2pcb(file, p.g, p.c);
+		currentBoundary = pcb[2] || null;
+		setProgress(0, pcb[1].filter((track) => track[0] > 0).length);
+		const candidate = await createRoutingWorker();
+		if (task.generation !== routingGeneration) {
+			releaseWorker(candidate);
 			return;
 		}
+		worker = candidate;
+		candidate.addEventListener('message', function (event) {
+			if (task.generation !== routingGeneration) return;
+			const message = event.data;
+			if (message.type === 'log') {
+				appendLog(message.key || message.message, ...(message.args || []));
+				return;
+			}
+			if (message.type === 'progress') {
+				setProgress(message.done, message.total);
+				return;
+			}
+			if (message.type === 'error') {
+				appendLog('log.routeError', message.message);
+				finishTask(task);
+				return;
+			}
+			if (message.type === 'done') {
+				lastPcbData = message.data;
+				lastResult = { ...task, data: message.data, total: message.total, unrouted: message.unrouted, status: message.status };
+				js_pcb.view_pcb(lastPcbData, 0, 2, currentBoundary);
+				setProgress(message.total - message.unrouted, message.total, true);
+				addHistoryRecord(lastResult);
+				finishTask(task);
+				if (task.autoImport) importResultToPcb(lastResult);
+				return;
+			}
+			const preview = Array.isArray(message) ? message : message.data;
+			if (Array.isArray(preview)) {
+				lastPcbData = preview;
+				js_pcb.view_pcb(preview, 0, 2, currentBoundary);
+			}
+		});
+		candidate.addEventListener('error', function (event) {
+			if (task.generation !== routingGeneration) return;
+			appendLog('log.workerRuntime', event.message || '');
+			finishTask(task);
+		});
+		candidate.postMessage([pcb, p.t, p.v, p.s, p.z, p.r, p.q, p.d, p.fr, p.xr, p.yr]);
+	} catch (error) {
+		// A rejected old creation must never stop or reset the replacement task.
+		if (task.generation !== routingGeneration) return;
+		appendLog('log.routeError', error.message || String(error));
+		finishTask(task);
+	}
+}
 
-		const dsnInfo = parseDsnInfo(originalFile);
-		dsnInfo.fileName = fileName;
-		dsnInfo.isDsnNormalized = isDsnNormalized;
-
-		const gap = +document.getElementById('arg_g').value;
-		const sesContent = convertPcbToSes(pcbData, dsnInfo, { gap: gap });
-
-		// EDA 环境：自动导入当前 PCB
+async function importResultToPcb(result) {
+	if (!result || isImporting || isRouting) return;
+	if (!result.data[1].some((track) => track[4]?.length)) {
+		appendLog('log.noTracks');
+		return;
+	}
+	const generation = routingGeneration;
+	if (result.unrouted > 0 || result.status === 'timeout') {
+		const accepted = await jspcbUi.confirmImport(result.total - result.unrouted, result.total);
+		// Capture the exact result and reject stale dialogs after a new run/file.
+		if (!accepted || generation !== routingGeneration || result !== lastResult || isRouting) return;
+	}
+	if (generation !== routingGeneration || result !== lastResult || isImporting) return;
+	isImporting = true;
+	updateControls();
+	try {
+		const content = sesForResult(result);
+		const name = result.fileName + '.ses';
 		if (typeof eda !== 'undefined' && eda?.pcb_Document?.importAutoRouteSesFile) {
-			const sesFile = new File([sesContent], fileName + '.ses', { type: 'text/plain' });
+			const sesFile = new File([content], name, { type: 'text/plain' });
 			try {
 				await eda.pcb_Document.importAutoRouteSesFile(sesFile);
-				appendLog(t(partial ? 'log.partialImport' : 'log.imported'));
-			} catch (e) {
-				console.error('[jspcb][eda] import failed', e);
-				appendLog(t('log.importFail', e && e.message ? e.message : e));
-				try {
-					if (eda?.sys_FileSystem?.saveFile) {
-						await eda.sys_FileSystem.saveFile(sesFile, sesFile.name);
-						appendLog(t('log.savedFile', sesFile.name));
-						showToast(t('toast.importSaved'), 'warn', 6);
-					} else {
-						showToast(t('toast.importFail'), 'error', 6);
-					}
-				} catch (e2) {
-					console.error('[jspcb][eda] save fallback failed', e2);
-					showToast(t('toast.importFailSave'), 'error', 8);
-				}
+				appendLog(result.unrouted ? 'log.partialImport' : 'log.imported');
+			} catch (error) {
+				appendLog('log.importFail', error.message || String(error));
+				if (eda?.sys_FileSystem?.saveFile) await eda.sys_FileSystem.saveFile(sesFile, name);
+				else downloadSes(content, name);
 			}
-			return;
+		} else {
+			downloadSes(content, name);
+			appendLog('log.exported');
 		}
-
-		// 非 EDA 环境：下载 SES
-		const blob = new Blob([sesContent], { type: 'text/plain' });
-		const url = URL.createObjectURL(blob);
-		const a = document.createElement('a');
-		a.href = url;
-		a.download = fileName + '.ses';
-		document.body.appendChild(a);
-		a.click();
-		document.body.removeChild(a);
-		URL.revokeObjectURL(url);
-		appendLog(t('log.exported'));
-	} catch (err) {
-		console.error('[jspcb] auto import failed', err);
-		appendLog(t('log.sesFail', err && err.message ? err.message : err));
-	}
-}
-
-//file onload handler
-function handleOnLoad(evt, silent)
-{
-	//the onload get a string of the dsn file
-	let content = evt.target.result;
-	originalFile = content;  // 保存原始内容
-	isDsnNormalized = false;
-	
-	// 检查是否需要把嘉立创 DSN 归一化为 JS-PCB 的标准坐标系
-	if (document.getElementById('dsn_normalize').checked) {
-		try {
-			content = normalizeDsn(content);
-			isDsnNormalized = true;
-			console.log('DSN 已归一化');
-		} catch (err) {
-			console.error('DSN 归一化失败:', err);
-			// 转换失败时不要继续使用未转换的数据，否则坐标系不一致，
-			// 布线器会把整块板当成只有几毫米大小。
-			file = null;
-			lastPcbData = null;
-			currentBoundary = null;
-			if (!silent) showToast(t('log.normFail', err.message), 'error', 6);
-			return false;
-		}
-	}
-
-	file = content;
-	lastPcbData = null;
-	currentBoundary = null;
-	if (!silent) showToast(t('toast.dsnLoaded', fileName), 'success', 2);
-
-	// 打开窗口后立即绘制板框和焊盘，不必等到开始布线
-	renderBoardPreview();
-	return true;
-}
-
-// 解析 DSN 并绘制静态预览（板框 + 焊盘，无走线）
-function renderBoardPreview()
-{
-	if (file === null) return;
-	try {
-		const gap = +document.getElementById('arg_g').value;
-		const clearance = +document.getElementById('arg_c').value;
-		const pcbData = js_pcb.dsn2pcb(file, gap, clearance);
-		currentBoundary = Array.isArray(pcbData[2]) ? pcbData[2] : null;
-		lastPcbData = pcbData;
-		js_pcb.view_pcb(pcbData, 0, 2, currentBoundary);
-		const totalNets = pcbData[1].filter(function(t) { return t[0] > 0; }).length;
-		setProgress(0, totalNets);
-	} catch (e) {
-		console.error('[jspcb] preview failed', e);
-	}
-}
-
-//file selection handler
-function handleFileSelect(evt)
-{
-	//filelist
-	let files = evt.target.files;
-	let f = files[0];
-
-	//dsn files only.
-	if (f.name.match('.*[.]dsn'))
-	{
-		// 保存文件名
-		fileName = f.name.replace('.dsn', '');
-		
-		//file reader
-		let reader = new FileReader();
-
-		//onload handler
-		reader.onload = handleOnLoad;
-
-		//read the dsn file
-		reader.readAsText(f);
-	}
-}
-
-// Resize handler to re-render SVG on window resize
-window.addEventListener('resize', function() {
-	if (lastPcbData) {
-		// Re-render with auto-scaling
-		js_pcb.view_pcb(lastPcbData, 0, 2, currentBoundary);
-	}
-});
-
-// 数字输入框：隐藏原生上下箭头，改成输入框内部的上下步进按钮
-function enhanceNumberInputs()
-{
-	document.querySelectorAll('.param-row input[type="number"]').forEach(function(input) {
-		if (input.parentElement && input.parentElement.classList.contains('num-field')) return;
-
-		const field = document.createElement('div');
-		field.className = 'num-field';
-		input.parentNode.insertBefore(field, input);
-		field.appendChild(input);
-
-		const stepper = document.createElement('div');
-		stepper.className = 'num-stepper';
-		stepper.innerHTML =
-			'<button type="button" class="step-btn step-up" tabindex="-1" aria-label="' + t('ui.increase') + '"></button>' +
-			'<button type="button" class="step-btn step-down" tabindex="-1" aria-label="' + t('ui.decrease') + '"></button>';
-		field.appendChild(stepper);
-
-		function step(dir) {
-			const min = input.min === '' ? -Infinity : +input.min;
-			const max = input.max === '' ? Infinity : +input.max;
-			const stepSize = input.step === '' ? 1 : +input.step;
-			let value = input.value === '' ? (isFinite(min) ? min : 0) : +input.value;
-			value = Math.min(max, Math.max(min, value + dir * stepSize));
-			input.value = String(value);
-			input.dispatchEvent(new Event('input', { bubbles: true }));
-			input.dispatchEvent(new Event('change', { bubbles: true }));
-		}
-
-		stepper.querySelector('.step-up').addEventListener('click', function() { step(1); });
-		stepper.querySelector('.step-down').addEventListener('click', function() { step(-1); });
-	});
-}
-
-enhanceNumberInputs();
-
-//register action handlers
-document.getElementById('files').addEventListener('change', handleFileSelect, false);
-document.getElementById('go').onclick = handleOnGo;
-// 修改边框间隙后同步刷新静态预览
-document.getElementById('arg_g').addEventListener('change', renderBoardPreview, false);
-// ===== 从 EDA 自动获取并载入 DSN =====
-let autoLoadInFlight = false;
-
-function showToast(message, type, duration) {
-	if (typeof eda === 'undefined') return;
-	try {
-		eda?.sys_Message?.showToastMessage?.(message, type || 'info', duration || 3);
-	} catch (e) {
-		console.warn('[jspcb] toast failed', e);
-	}
-}
-
-function delay(ms) {
-	return new Promise(function(resolve) { setTimeout(resolve, ms); });
-}
-
-// iframe 中 eda API 可能比脚本更晚注入，这里轮询等待，避免一打开就误判为“非 EDA 环境”
-function waitForEdaApi(timeoutMs) {
-	return new Promise(function(resolve) {
-		const start = Date.now();
-		(function check() {
-			if (typeof eda !== 'undefined' && eda?.pcb_ManufactureData?.getDsnFile) return resolve(true);
-			if (Date.now() - start >= timeoutMs) return resolve(false);
-			setTimeout(check, 200);
-		})();
-	});
-}
-
-function enableEdaMode() {
-	const fileInputWrapper = document.getElementById('file_input_wrapper');
-	if (fileInputWrapper) fileInputWrapper.style.display = 'none';
-}
-
-async function loadDsnFromEdaOnce() {
-	const dsnFile = await eda.pcb_ManufactureData.getDsnFile();
-
-	let dsnContent;
-	if (typeof dsnFile === 'string') dsnContent = dsnFile;
-	else if (dsnFile && typeof dsnFile.text === 'function') dsnContent = await dsnFile.text();
-	else if (dsnFile instanceof ArrayBuffer) dsnContent = new TextDecoder().decode(dsnFile);
-	else throw new Error(t('ui.errReadDsn'));
-
-	if (!dsnContent || dsnContent.trim().length < 50) throw new Error(t('ui.errEmptyDsn'));
-
-	const checkbox = document.getElementById('dsn_normalize');
-	if (checkbox) checkbox.checked = true;
-
-	const info = typeof parseDsnInfo === 'function' ? parseDsnInfo(dsnContent) : null;
-	if (info && info.fileName) fileName = info.fileName;
-	if (handleOnLoad({ target: { result: dsnContent } }, true) === false) {
-		const err = new Error(t('ui.errNormalize'));
-		err.fatal = true;
-		throw err;
-	}
-}
-
-async function autoLoadDsnFromEda() {
-	if (autoLoadInFlight) return;
-	autoLoadInFlight = true;
-	try {
-		const ready = await waitForEdaApi(5000);
-		if (!ready) {
-			// 非 EDA 环境（例如浏览器里直接打开），保留文件选择
-			return;
-		}
-
-		enableEdaMode();
-		showToast(t('toast.fetchingDsn'), 'info', 2);
-
-		let lastError = null;
-		for (let attempt = 1; attempt <= 5; attempt++) {
-			try {
-				await loadDsnFromEdaOnce();
-				showToast(t('toast.dsnLoaded', fileName), 'success', 2);
-				return;
-			} catch (e) {
-				lastError = e;
-				console.warn('[jspcb][eda] 自动获取 DSN 失败，第 ' + attempt + ' 次', e);
-				if (e && e.fatal) break;
-				if (attempt < 5) {
-					await delay(300 + attempt * 300);
-				}
-			}
-		}
-
-		const msg = lastError && lastError.message ? lastError.message : t('ui.errUnknown');
-		console.error('[jspcb][eda] load DSN failed', lastError);
-		showToast(t('toast.dsnFail', msg), 'error', 6);
-	} catch (e) {
-		console.error('[jspcb][eda] auto load failed', e);
-		showToast(t('toast.dsnFail', e && e.message ? e.message : e), 'error', 6);
+	} catch (error) {
+		appendLog('log.sesFail', error.message || String(error));
 	} finally {
-		autoLoadInFlight = false;
+		isImporting = false;
+		updateControls();
 	}
 }
 
-// 语言切换按钮（位于“?”左侧）
-(function initLanguageSwitch() {
-	const btn = document.getElementById('lang_btn');
-	if (!btn || !window.jspcbI18n) return;
-	btn.addEventListener('click', function() {
-		const next = window.jspcbI18n.getLang() === 'en' ? 'zh-Hans' : 'en';
-		window.jspcbI18n.setLang(next);
-	});
-})();
-
-// 语言切换后同步“开始/停止布线”按钮等动态文案
-document.addEventListener('jspcb-lang-change', function() {
-	setRoutingState(isRouting);
-	document.querySelectorAll('.step-up').forEach(function(btn) { btn.setAttribute('aria-label', t('ui.increase')); });
-	document.querySelectorAll('.step-down').forEach(function(btn) { btn.setAttribute('aria-label', t('ui.decrease')); });
-});
-
-// 等词条加载完成后再自动获取 DSN，保证吐司使用正确语言
-if (window.jspcbI18n && window.jspcbI18n.ready) {
-	window.jspcbI18n.ready.then(function() {
-		setRoutingState(isRouting);
-		autoLoadDsnFromEda();
-	});
-} else {
-	autoLoadDsnFromEda();
+function handleOnLoad(event) {
+	invalidateTask();
+	originalFile = event.target.result;
+	lastPcbData = null;
+	lastResult = null;
+	currentBoundary = null;
+	isDsnNormalized = false;
+	try {
+		const normalize = document.getElementById('dsn_normalize').checked && /\(resolution\s+mil\s+1000\)/i.test(originalFile);
+		file = normalize ? normalizeDsn(originalFile) : originalFile;
+		isDsnNormalized = normalize;
+		renderBoardPreview();
+		updateControls();
+		return true;
+	} catch (error) {
+		file = null;
+		updateControls();
+		appendLog('log.normFail', error.message || String(error));
+		return false;
+	}
 }
 
-// ===== 关于（?）弹窗 =====
-(function initHelpDialog() {
-	const modal = document.getElementById('help_modal');
-	const openBtn = document.getElementById('help_btn');
-	const closeBtn = document.getElementById('help_close');
-	if (!modal || !openBtn) return;
+function renderBoardPreview() {
+	if (!file || isRouting) return;
+	try {
+		const params = getCurrentParams();
+		const pcb = js_pcb.dsn2pcb(file, params.g, params.c);
+		currentBoundary = pcb[2] || null;
+		lastPcbData = pcb;
+		js_pcb.view_pcb(pcb, 0, 2, currentBoundary);
+		setProgress(0, pcb[1].filter((track) => track[0] > 0).length);
+	} catch (error) {
+		appendLog('log.dsnParseFail', error.message || String(error));
+	}
+}
 
-	function openHelp() { modal.style.display = 'flex'; }
-	function closeHelp() { modal.style.display = 'none'; }
+let dsnLoadGeneration = 0;
+async function tryLoadDsnFromEda() {
+	if (typeof eda === 'undefined' || !eda?.pcb_ManufactureData?.getDsnFile || isRouting || isImporting) return;
+	const request = ++dsnLoadGeneration;
+	document.getElementById('load_dsn_eda').disabled = true;
+	try {
+		const dsn = await eda.pcb_ManufactureData.getDsnFile();
+		const content = typeof dsn === 'string' ? dsn : await dsn.text();
+		if (request !== dsnLoadGeneration || isRouting || isImporting) return;
+		document.getElementById('dsn_normalize').checked = true;
+		fileName = parseDsnInfo(content).fileName || 'output';
+		handleOnLoad({ target: { result: content } });
+	} catch (error) {
+		if (request === dsnLoadGeneration) appendLog('log.dsnParseFail', error.message || String(error));
+	} finally {
+		if (request === dsnLoadGeneration) updateControls();
+	}
+}
 
-	openBtn.onclick = openHelp;
-	if (closeBtn) closeBtn.onclick = closeHelp;
-	modal.addEventListener('click', function(e) {
-		if (e.target === modal) closeHelp();
-	});
-	document.addEventListener('keydown', function(e) {
-		if (e.key === 'Escape' && modal.style.display !== 'none') closeHelp();
-	});
-})();
+function handleFileSelect(event) {
+	const selected = event.target.files[0];
+	if (!selected || !/\.dsn$/i.test(selected.name) || isRouting || isImporting) return;
+	const request = ++dsnLoadGeneration;
+	const reader = new FileReader();
+	reader.onload = function (loaded) {
+		if (request !== dsnLoadGeneration || isRouting || isImporting) return;
+		fileName = selected.name.replace(/\.dsn$/i, '');
+		handleOnLoad(loaded);
+	};
+	reader.readAsText(selected);
+}
+
+window.addEventListener('resize', function () {
+	if (lastPcbData) js_pcb.view_pcb(lastPcbData, 0, 2, currentBoundary);
+});
+window.addEventListener('beforeunload', invalidateTask);
+document.getElementById('files').addEventListener('change', handleFileSelect);
+document.getElementById('go').onclick = handleOnGo;
+document.getElementById('export_ses').onclick = function () {
+	importResultToPcb(lastResult);
+};
+document.getElementById('load_dsn_eda').onclick = tryLoadDsnFromEda;
+document.getElementById('clear_history').onclick = function () {
+	historyRecords = [];
+	persistHistory();
+	renderHistory();
+};
+document.getElementById('arg_g').addEventListener('change', renderBoardPreview);
+document.getElementById('arg_c').addEventListener('change', renderBoardPreview);
+document.addEventListener('jspcb-lang-change', function () {
+	renderHistory();
+	renderLogs();
+	updateControls();
+	setProgress(progressState.done, progressState.total, progressState.completed);
+});
+
+jspcbI18n.ready.then(function () {
+	renderHistory();
+	updateControls();
+	setProgress(0, 0);
+	const isEda = typeof eda !== 'undefined' && !!eda?.pcb_ManufactureData?.getDsnFile;
+	document.getElementById('file_input_wrapper').style.display = isEda ? 'none' : 'block';
+	document.getElementById('eda_input_group').style.display = isEda ? 'flex' : 'none';
+	const button = document.getElementById('export_ses');
+	button.setAttribute('data-i18n', isEda ? 'ui.importSes' : 'ui.exportSes');
+	button.innerText = t(isEda ? 'ui.importSes' : 'ui.exportSes');
+	if (isEda) tryLoadDsnFromEda();
+});

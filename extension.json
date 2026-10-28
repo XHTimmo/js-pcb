@@ -1,5 +1,5 @@
 {
-	"name": "js-pcb-autorouter",
+	"name": "auto-routing-with-jspcb",
 	"uuid": "fe81c92e8cae445f9e4e4117058555f5",
 	"displayName": "JsPCB自动布线",
 	"description": "基于 JS-PCB 的自动布线器",

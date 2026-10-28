@@ -1,5 +1,8 @@
 {
 	"About...": "About...",
+	"自动布线": "Autorouting",
+	"JS-PCB 自动布线器": "JS-PCB Autorouter",
+	"基于 JS-PCB 的嘉立创EDA专业版自动布线扩展": "JS-PCB autorouting extension for EasyEDA",
 	"JsPCB自动布线": "JsPCB Autorouter",
 	"基于 JS-PCB 的自动布线器": "JS-PCB based PCB autorouter",
 	"JsPCB自动布线...": "JsPCB Autorouter..."

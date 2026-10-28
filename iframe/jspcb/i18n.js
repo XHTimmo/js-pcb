@@ -1,162 +1,105 @@
 /**
- * 轻量多语言模块
- *
- * 启动时优先读取 EasyEDA 当前语言环境（eda.sys_I18n.getCurrentLanguage），
- * 从扩展的 /locales/<lang>.json 加载词条并应用到带 data-i18n 的元素。
- * 同时提供 t(key, ...args) 给动态文案使用。
+ * Adapted from PR #1 by summving <summving@easyeda.com> (@easyeda2021).
+ * https://github.com/XHTimmo/js-pcb/pull/1
+ * Modified for the existing manual-import workflow; see NOTICE.md.
  */
-"use strict";
+'use strict';
 
-var jspcbI18n = (function()
-{
-	const SUPPORTED = ["zh-Hans", "en"];
-
-	let lang = "zh-Hans";
+var jspcbI18n = (function () {
+	const dictionaries = new Map();
+	let lang = 'zh-Hans';
 	let dict = {};
 	let fallback = {};
-	let ready = null;
+	let languageRequest = 0;
 
-	function normalizeLang(value)
-	{
-		if (typeof value === "string" && /^zh/i.test(value)) return "zh-Hans";
-		return "en";
+	function normalizeLang(value) {
+		return typeof value === 'string' && /^zh/i.test(value) ? 'zh-Hans' : 'en';
 	}
 
-	async function readText(path)
-	{
-		// EDA 环境优先走扩展文件系统，浏览器环境回退到 fetch
-		try
-		{
-			if (typeof eda !== "undefined" && eda?.sys_FileSystem?.getExtensionFile)
-			{
+	async function readText(path) {
+		try {
+			if (typeof eda !== 'undefined' && eda?.sys_FileSystem?.getExtensionFile) {
 				const file = await eda.sys_FileSystem.getExtensionFile(path);
 				if (file) return await file.text();
 			}
+		} catch (e) {
+			// Browser loading is also available when the extension file API fails.
 		}
-		catch (e)
-		{
-			// 继续尝试 fetch
-		}
-
-		const candidates = [path, path.replace(/^\//, "")];
-		for (const candidate of candidates)
-		{
-			try
-			{
-				const res = await fetch(candidate);
-				if (res.ok) return await res.text();
-			}
-			catch (e)
-			{
-				// 尝试下一个路径
-			}
-		}
-		throw new Error("cannot load " + path);
+		const response = await fetch(path);
+		if (!response.ok) throw new Error('Cannot load ' + path);
+		return await response.text();
 	}
 
-	async function loadDict(target)
-	{
-		try
-		{
-			const text = await readText("/locales/" + target + ".json");
-			const data = JSON.parse(text);
-			return (data && typeof data === "object") ? data : {};
+	function loadDict(target) {
+		if (!dictionaries.has(target)) {
+			dictionaries.set(
+				target,
+				readText('/locales/' + target + '.json')
+					.then(JSON.parse)
+					.catch(function (error) {
+						console.warn('[jspcb][i18n] Failed to load', target, error);
+						dictionaries.delete(target);
+						return {};
+					}),
+			);
 		}
-		catch (e)
-		{
-			console.warn("[jspcb][i18n] failed to load", target, e);
-			return {};
-		}
+		return dictionaries.get(target);
 	}
 
-	async function detectLanguage()
-	{
-		try
-		{
-			if (typeof eda !== "undefined" && eda?.sys_I18n?.getCurrentLanguage)
-			{
+	async function detectLanguage() {
+		try {
+			if (typeof eda !== 'undefined' && eda?.sys_I18n?.getCurrentLanguage) {
 				const current = await eda.sys_I18n.getCurrentLanguage();
-				if (typeof current === "string" && current) return normalizeLang(current);
+				if (current) return normalizeLang(current);
 			}
+		} catch (e) {
+			console.warn('[jspcb][i18n] Language detection failed', e);
 		}
-		catch (e)
-		{
-			console.warn("[jspcb][i18n] detect failed", e);
+		return normalizeLang(typeof navigator !== 'undefined' ? navigator.language : 'zh-Hans');
+	}
+
+	function t(key, ...args) {
+		const text = dict[key] ?? fallback[key] ?? key;
+		return String(text).replace(/\$\{(\d+)\}/g, function (match, index) {
+			return String(args[Number(index) - 1] ?? '');
+		});
+	}
+
+	function apply() {
+		document.documentElement.lang = lang;
+		document.querySelectorAll('[data-i18n]').forEach(function (element) {
+			element.textContent = t(element.getAttribute('data-i18n'));
+		});
+		for (const attribute of ['title', 'aria-label']) {
+			document.querySelectorAll('[data-i18n-' + attribute + ']').forEach(function (element) {
+				element.setAttribute(attribute, t(element.getAttribute('data-i18n-' + attribute)));
+			});
 		}
-
-		const nav = (typeof navigator !== "undefined" && navigator.language) ? navigator.language : "zh-Hans";
-		return normalizeLang(nav);
+		const button = document.getElementById('lang_btn');
+		if (button) button.innerText = lang === 'en' ? '中' : 'EN';
+		document.dispatchEvent(new CustomEvent('jspcb-lang-change', { detail: { lang: lang } }));
 	}
 
-	function format(text, args)
-	{
-		return String(text).replace(/\$\{(\d+)\}/g, function(match, index) {
-			const value = args[Number(index) - 1];
-			return value === undefined || value === null ? "" : String(value);
-		});
-	}
-
-	function t(key, ...args)
-	{
-		const text = dict[key] !== undefined ? dict[key] : fallback[key];
-		if (text === undefined) return key;
-		return format(text, args);
-	}
-
-	function updateLanguageButton()
-	{
-		const btn = document.getElementById("lang_btn");
-		if (!btn) return;
-		// 按钮显示“将要切换到的语言”
-		btn.innerText = lang === "en" ? "中" : "EN";
-		btn.title = t("ui.language");
-	}
-
-	function apply()
-	{
-		document.querySelectorAll("[data-i18n]").forEach(function(el) {
-			el.textContent = t(el.getAttribute("data-i18n"));
-		});
-		document.querySelectorAll("[data-i18n-title]").forEach(function(el) {
-			el.title = t(el.getAttribute("data-i18n-title"));
-		});
-		updateLanguageButton();
-		document.dispatchEvent(new CustomEvent("jspcb-lang-change", { detail: { lang: lang } }));
-	}
-
-	async function useLanguage(target)
-	{
-		lang = SUPPORTED.indexOf(target) >= 0 ? target : "en";
-		const other = lang === "en" ? "zh-Hans" : "en";
-		const result = await Promise.all([loadDict(lang), loadDict(other)]);
+	async function setLang(target) {
+		const request = ++languageRequest;
+		const next = normalizeLang(target);
+		const other = next === 'en' ? 'zh-Hans' : 'en';
+		const result = await Promise.all([loadDict(next), loadDict(other)]);
+		if (request !== languageRequest) return;
+		lang = next;
 		dict = result[0];
 		fallback = result[1];
 		apply();
 	}
 
-	async function setLang(target)
-	{
-		await useLanguage(normalizeLang(target));
-	}
-
-	function getLang()
-	{
-		return lang;
-	}
-
-	async function init()
-	{
-		const detected = await detectLanguage();
-		await useLanguage(detected);
-	}
-
-	ready = init();
-
+	const ready = detectLanguage().then(setLang);
 	return {
 		t: t,
 		apply: apply,
 		setLang: setLang,
-		getLang: getLang,
-		ready: ready
+		getLang: function () {
+			return lang;
+		},
+		ready: ready,
 	};
 })();
