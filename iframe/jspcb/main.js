@@ -1,6 +1,6 @@
 /**
  * Integrates PR #3 with the interface and attribution retained from PR #2.
- * Original contribution: summving <summving@easyeda.com> (@easyeda2021).
+ * Original contribution:  (@easyeda2021).
  * https://github.com/XHTimmo/js-pcb/pull/3 — see NOTICE.md.
  */
 let file = null;

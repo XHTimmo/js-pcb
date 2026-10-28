@@ -1,3 +1,7 @@
+[简体中文](#chinese) · [English](#english)
+
+<a id="chinese"></a>
+
 这是一个为嘉立创EDA专业版（JLCEDA Pro）开发的自动布线扩展插件，集成了开源项目 [JS-PCB](https://github.com/vygr/JS-PCB) 的布线引擎。
 
 ## 功能特性
@@ -43,9 +47,9 @@
 
 ## 贡献来源
 
-本次多语言与界面展示改进部分提取并改编自 [PR #1](https://github.com/XHTimmo/js-pcb/pull/1)，感谢原贡献者 **summving <summving@easyeda.com>**（[@easyeda2021](https://github.com/easyeda2021)）。保留历史记录与手动导入/导出流程；详细来源及第三方版权声明见 [NOTICE.md](NOTICE.md)，本次 PR 描述草稿见 [docs/pr-1-ui-backport.md](docs/pr-1-ui-backport.md)。
+本次多语言与界面展示改进部分提取并改编自 [PR #1](https://github.com/XHTimmo/js-pcb/pull/1)，感谢原贡献者 （[@easyeda2021](https://github.com/easyeda2021)）。保留历史记录与手动导入/导出流程；详细来源及第三方版权声明见 [NOTICE.md](NOTICE.md)，本次 PR 描述草稿见 [docs/pr-1-ui-backport.md](docs/pr-1-ui-backport.md)。
 
-后续通过 [PR #3](https://github.com/XHTimmo/js-pcb/pull/3) 整合 **summving / @easyeda2021** 的 DSN、布线、焊盘层和过孔修复，同时保留主线的历史记录、手动操作、双语界面与署名。完整来源见 [NOTICE.md](NOTICE.md)。
+后续通过 [PR #3](https://github.com/XHTimmo/js-pcb/pull/3) 整合的 DSN、布线、焊盘层和过孔修复，同时保留主线的历史记录、手动操作、双语界面与署名。完整来源见 [NOTICE.md](NOTICE.md)。
 
 ## 开发验证
 
@@ -72,3 +76,103 @@ npm run build
         - 修复了在 IFrame 环境下 Worker 加载的跨域/安全问题。
 
 **注意**：本扩展包遵循 GPL-2.0 协议分发，许可证全文见 [LICENSE](LICENSE)。SDK 模板原有的 Apache-2.0 许可证与 JLCEDA 版权声明保留于 [LICENSES/Apache-2.0.txt](LICENSES/Apache-2.0.txt)。如果您分发本扩展包或其衍生作品，请确保遵守相应许可证条款。
+
+---
+
+<a id="english"></a>
+
+# JS-PCB Autorouter for EasyEDA Pro
+
+An automatic routing extension for EasyEDA Pro (JLCEDA Pro), powered by the open-source
+[JS-PCB](https://github.com/vygr/JS-PCB) routing engine.
+
+## Features
+
+- **One-click routing**: automatically obtains the current PCB's DSN data and starts routing.
+- **Parameter configuration**: adjust via cost, grid resolution, sample count and other advanced routing parameters.
+- **Chinese/English UI**: follows the language of EasyEDA or the browser when opened; it can also be switched with the language button in the top-right corner.
+- **Interface**: blue theme, parameter stepper buttons, bottom log panel and About dialog; the log and history update when the language changes.
+- **History**: routing history is saved automatically, and SES files from previous runs can be exported.
+- **Routing control**: live progress display, support for stopping and restarting; when the timeout is reached or a net cannot be routed, retries stop and the available result is kept.
+- **Import**: manual import is retained, with an optional "auto import when finished" setting (off by default); partial or timed-out results require confirmation.
+- **Rule compatibility**: fixes for DSN parsing, clearance, via size and pad-layer handling; the preview and router support multi-path board outlines.
+
+## Usage
+
+1. Install the extension.
+2. Open a PCB document.
+3. Click **JSPCB - Auto Route** in the top menu.
+4. Configure the routing parameters in the window (or keep the defaults).
+5. Click **Start routing**.
+6. Wait for routing to finish, then click **Import SES**.
+
+![Interface example](images/dialog.jpg)
+
+## Known Limitations and Contributions
+
+Due to the algorithmic characteristics of the JS-PCB engine, **the current routing quality may be
+moderate**. For dense boards or boards with complex rules, you may see:
+
+- A low completion rate, with some nets left unconnected.
+- Non-optimal paths, including detours or redundant vias.
+- Grid-based routing cannot fully express all complex design rules; connectivity and DRC must still be checked after import.
+- The timeout is applied per sample. The default is 3600 seconds; 0 means unlimited.
+
+The main purpose of this project is to **provide a technical framework and reference implementation
+for integrating an autorouter into JLCEDA Pro**.
+
+Community contributions are very welcome. Based on this framework, you can:
+
+- Improve the existing routing parameter configuration.
+- Improve the underlying routing algorithm.
+- Integrate or port other, more powerful open-source routing engines.
+
+We hope to build a useful open-source autorouting extension together with the community.
+
+## Contribution Sources
+
+The multilingual and UI improvements were extracted and adapted from
+[PR #1](https://github.com/XHTimmo/js-pcb/pull/1). Thanks to the original contributor
+([@easyeda2021](https://github.com/easyeda2021)). The history feature and the manual import/export
+flow are retained. See [NOTICE.md](NOTICE.md) for detailed attribution and third-party copyright
+notices, and [docs/pr-1-ui-backport.md](docs/pr-1-ui-backport.md) for the PR description draft.
+
+The DSN, routing, pad-layer and via fixes integrated through
+[PR #3](https://github.com/XHTimmo/js-pcb/pull/3) retain the mainline history, manual operations,
+bilingual UI and attribution. See [NOTICE.md](NOTICE.md) for the complete provenance.
+
+## Development and Validation
+
+```bash
+npm ci
+npm run test:ui
+npm run test:routing
+node iframe/jspcb/test_runner.js
+npm run build
+```
+
+`test:ui` verifies language loading and UI compatibility logic; `test:routing` verifies the actual
+routing engine and DSN-to-SES conversion. The command-line tests read sample files from
+`tests/fixtures/` by default and also accept explicit DSN paths.
+
+The existing `npm test` suite under `tests/autorouter/` references the `src/autorouter/` modules,
+which are missing from the current repository and must be restored separately. A successful build
+does not mean that routing or DRC has been verified on a real PCB.
+
+## Third-Party Open-Source Components
+
+This project ports and uses code from the following third-party open-source project in its
+autorouting feature:
+
+- **JS-PCB** (https://github.com/vygr/JS-PCB)
+    - License: GNU General Public License v2.0 (GPL-2.0)
+    - Original code location: core logic files under `iframe/jspcb/` (such as `router.js`, `worker.js`, `mymath.js`, etc.).
+    - Modifications:
+        - `iframe/jspcb/index.html`: UI layout and styles adapted to the EDA extension style.
+        - `iframe/jspcb/main.js`: glue code for communicating with the JLCEDA API (DSN fetching and SES import).
+        - Fixed Worker loading under the iframe cross-origin/security environment.
+
+**Note**: This extension is distributed under GPL-2.0. The full license text is in [LICENSE](LICENSE).
+The Apache-2.0 license and JLCEDA copyright notice from the original SDK template are retained in
+[LICENSES/Apache-2.0.txt](LICENSES/Apache-2.0.txt). If you distribute this extension or a derivative
+work, please comply with the applicable license terms.

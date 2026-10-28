@@ -9,7 +9,7 @@ feat: 从 #1 提取多语言与界面改进并统一许可证
 ## 来源与贡献者
 
 - 部分提取自 [#1](https://github.com/XHTimmo/js-pcb/pull/1)，不是对该 PR 的整体合并。
-- 原贡献者：**summving <summving@easyeda.com>**（[@easyeda2021](https://github.com/easyeda2021)）。
+- 原贡献者：（[@easyeda2021](https://github.com/easyeda2021)）。
 - 来源提交：`2b18d934047c80a281b3b3b7d8689604ead98a3e`、`81c3b5a8d27c9f2fbe8b5e65806b0e96103cff9b`。
 - 来源和署名保留在 NOTICE.md、相关源文件及关于弹窗中。
 
@@ -37,5 +37,5 @@ feat: 从 #1 提取多语言与界面改进并统一许可证
 提交时保留以下 trailer：
 
 ```text
-Co-authored-by: summving <summving@easyeda.com>
+Co-authored-by:
 ```
