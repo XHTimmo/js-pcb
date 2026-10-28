@@ -1,16 +1,25 @@
+/**
+ * Presentation adapted from PR #1 by summving (@easyeda2021).
+ * https://github.com/XHTimmo/js-pcb/pull/1 — see NOTICE.md.
+ */
 //filename and worker
 let file = null;
-let originalFile = null;  // 保存原始文件内容（转换前）
-let fileName = 'output';  // 文件名
+let originalFile = null; // 保存原始文件内容（转换前）
+let fileName = 'output'; // 文件名
 let worker = null;
-let lastPcbData = null;   // 保存最后的布线结果
-let isJlcConverted = false;  // 是否经过 JLC 转换
+let lastPcbData = null; // 保存最后的布线结果
+let isJlcConverted = false; // 是否经过 JLC 转换
 let shouldSaveHistory = false;
 let routingTimer = null;
 let routingStartTime = 0;
 const HISTORY_KEY = 'js_pcb_history_v1';
 const HISTORY_LIMIT = 10;
 let historyRecords = [];
+let logRecords = [];
+
+function t(key, ...args) {
+	return jspcbI18n.t(key, ...args);
+}
 
 function startTimer() {
 	stopTimer();
@@ -18,7 +27,7 @@ function startTimer() {
 	display.style.display = 'block';
 	display.innerText = '00:00';
 	routingStartTime = Date.now();
-	
+
 	routingTimer = setInterval(() => {
 		const elapsed = Date.now() - routingStartTime;
 		const seconds = Math.floor(elapsed / 1000);
@@ -53,7 +62,7 @@ function persistHistory() {
 
 function formatTime(ts) {
 	try {
-		return new Date(ts).toLocaleString();
+		return new Date(ts).toLocaleString(jspcbI18n.getLang());
 	} catch (err) {
 		return '';
 	}
@@ -79,7 +88,7 @@ function getCurrentParams() {
 		d: +document.getElementById('arg_d').value,
 		fr: +document.getElementById('arg_fr').value,
 		xr: +document.getElementById('arg_xr').value,
-		yr: +document.getElementById('arg_yr').value
+		yr: +document.getElementById('arg_yr').value,
 	};
 }
 
@@ -120,7 +129,7 @@ function createHistoryItem(record) {
 	const params = document.createElement('span');
 	params.innerText = formatParams(record.params);
 	const gap = document.createElement('span');
-	gap.innerText = `Gap ${record.params ? record.params.g : ''}`;
+	gap.innerText = t('ui.historyGap', record.params ? record.params.g : '');
 	meta.appendChild(params);
 	meta.appendChild(gap);
 
@@ -128,8 +137,8 @@ function createHistoryItem(record) {
 	actions.className = 'history-actions';
 	const downloadBtn = document.createElement('button');
 	downloadBtn.type = 'button';
-	downloadBtn.innerText = '下载 SES';
-	downloadBtn.onclick = function() {
+	downloadBtn.innerText = t('ui.downloadSes');
+	downloadBtn.onclick = function () {
 		downloadHistoryRecord(record);
 	};
 	actions.appendChild(downloadBtn);
@@ -169,15 +178,14 @@ function addHistoryRecord(pcbData) {
 			fileName: fileName,
 			createdAt: timestamp,
 			params: params,
-			sesContent: sesContent
+			sesContent: sesContent,
 		});
 		if (historyRecords.length > HISTORY_LIMIT) {
 			historyRecords = historyRecords.slice(0, HISTORY_LIMIT);
 		}
 		persistHistory();
 		renderHistory();
-	} catch (err) {
-	}
+	} catch (err) {}
 }
 
 //go button handler
@@ -195,8 +203,7 @@ async function loadTextFile(relativePath) {
 async function createRoutingWorker() {
 	try {
 		return new Worker('/iframe/jspcb/worker.js');
-	} catch (e) {
-	}
+	} catch (e) {}
 
 	const mymath = await loadTextFile('mymath.js');
 	const layer = await loadTextFile('layer.js');
@@ -208,10 +215,8 @@ async function createRoutingWorker() {
 	return new Worker(workerBlobUrl);
 }
 
-async function handleOnGo(evt)
-{
-	if (file !== null)
-	{
+async function handleOnGo(evt) {
+	if (file !== null) {
 		//params
 		let arg_g = +document.getElementById('arg_g').value;
 		let arg_t = +document.getElementById('arg_t').value;
@@ -226,9 +231,9 @@ async function handleOnGo(evt)
 		let arg_yr = +document.getElementById('arg_yr').value;
 
 		// Reset log UI
-		document.getElementById('log-overlay').style.display = 'block';
-		document.getElementById('log-content').innerHTML = ''; // Clear logs
-		appendLog("系统就绪，开始初始化布线线程...");
+		logRecords = [];
+		document.getElementById('log-content').innerHTML = '';
+		appendLog('log.init');
 		document.getElementById('go').disabled = true;
 		shouldSaveHistory = false;
 		startTimer();
@@ -236,78 +241,81 @@ async function handleOnGo(evt)
 		//run pcb solver web worker thread, register output listner
 		if (worker !== null) worker.terminate();
 		if (workerBlobUrl) {
-			try { URL.revokeObjectURL(workerBlobUrl); } catch {}
+			try {
+				URL.revokeObjectURL(workerBlobUrl);
+			} catch {}
 			workerBlobUrl = null;
 		}
 		try {
 			worker = await createRoutingWorker();
 		} catch (e) {
 			const msg = e && e.message ? e.message : String(e);
-			appendLog('Worker 创建失败: ' + msg);
+			appendLog('log.workerCreateFail', msg);
 			document.getElementById('go').disabled = false;
 			stopTimer();
 			return;
 		}
-		worker.addEventListener('message', function(event)
-		{
-			// Handle log messages
-			if (event.data.type === 'log') {
-				appendLog(event.data.message);
-				return;
-			}
-
-			// Handle legacy array data (result)
-			let pcbData = event.data;
-			if (event.data.type === 'result') {
-				pcbData = event.data.data;
-			}
-			
-			if (pcbData.length)
-			{
-				//保存布线结果
-				lastPcbData = pcbData;
-				//启用导出按钮
-				document.getElementById('export_ses').disabled = false;
-				
-				//view the pcb output with auto-scaling (scale=0)
-				js_pcb.view_pcb(pcbData, 0, 2);
-				
-				// Check if this is likely the final message (based on content or context)
-				// Actually worker sends the best_pcb as the very last message too.
-				// We can re-enable the button if we receive a message that implies completion?
-				// The worker sends "所有采样完成" log right before the final pcb data.
-				// But we can't easily distinguish intermediate vs final pcb data here without a flag.
-				// However, we can just leave the button disabled until the user changes something or we can detect end.
-				// Since we don't have an explicit "done" event for data, let's rely on the log "所有采样完成" to re-enable button?
-				// No, let's just keep it disabled while working. 
-				// Actually, we can just re-enable it always when we get data, but that might allow double clicking.
-				// Let's modify the worker to send a "done" message? 
-				// For now, let's just assume if we get a log starting with "所有采样完成", we are done.
-				if (shouldSaveHistory) {
-					addHistoryRecord(pcbData);
-					shouldSaveHistory = false;
+		worker.addEventListener(
+			'message',
+			function (event) {
+				// Handle log messages
+				if (event.data.type === 'log') {
+					appendLog(event.data.message);
+					return;
 				}
-			}
-		}, false);
+
+				// Handle legacy array data (result)
+				let pcbData = event.data;
+				if (event.data.type === 'result') {
+					pcbData = event.data.data;
+				}
+
+				if (pcbData.length) {
+					//保存布线结果
+					lastPcbData = pcbData;
+					//启用导出按钮
+					document.getElementById('export_ses').disabled = false;
+
+					//view the pcb output with auto-scaling (scale=0)
+					js_pcb.view_pcb(pcbData, 0, 2);
+
+					// The existing worker sends a completion log before its final array.
+					if (shouldSaveHistory) {
+						addHistoryRecord(pcbData);
+						shouldSaveHistory = false;
+					}
+				}
+			},
+			false,
+		);
 
 		//post to solver thread
-		worker.postMessage([js_pcb.dsn2pcb(file, arg_g),
-			 				arg_t, arg_v, arg_s, arg_z, arg_r, arg_q, arg_d, arg_fr, arg_xr, arg_yr]);
+		worker.postMessage([js_pcb.dsn2pcb(file, arg_g), arg_t, arg_v, arg_s, arg_z, arg_r, arg_q, arg_d, arg_fr, arg_xr, arg_yr]);
 	}
 }
 
-function appendLog(message) {
-	let logContainer = document.getElementById('log-content');
-	let entry = document.createElement('div');
+function renderLogRecord(record) {
+	const container = document.getElementById('log-content');
+	const entry = document.createElement('div');
 	entry.className = 'log-entry';
-	entry.innerText = message;
-	logContainer.appendChild(entry);
-	
-	// Auto scroll to bottom
-	document.getElementById('log-overlay').scrollTop = document.getElementById('log-overlay').scrollHeight;
+	const timestamp = new Date(record.time).toLocaleTimeString(jspcbI18n.getLang(), { hour12: false });
+	entry.innerText = '[' + timestamp + '] ' + jspcbUi.formatLog(record.message, record.args);
+	container.appendChild(entry);
+	container.scrollTop = container.scrollHeight;
+}
 
-	// Check for completion message to re-enable button
-	if (message.includes("所有采样完成")) {
+function renderLogs() {
+	document.getElementById('log-content').innerHTML = '';
+	logRecords.forEach(renderLogRecord);
+}
+
+function appendLog(message, ...args) {
+	const record = { message: message, args: args, time: Date.now() };
+	logRecords.push(record);
+	renderLogRecord(record);
+
+	// Completion is based on the original protocol, independent of display language.
+	if (message.includes('所有采样完成')) {
 		document.getElementById('go').disabled = false;
 		shouldSaveHistory = true;
 		stopTimer();
@@ -315,22 +323,21 @@ function appendLog(message) {
 }
 
 //导出 SES 文件
-async function handleExportSes(evt)
-{
+async function handleExportSes(evt) {
 	if (lastPcbData === null || originalFile === null) {
-		alert('请先运行布线！');
+		alert(t('error.runFirst'));
 		return;
 	}
-	
+
 	try {
 		// 解析原始 DSN 信息
 		const dsnInfo = parseDsnInfo(originalFile);
 		dsnInfo.fileName = fileName;
 		dsnInfo.isJlcConverted = isJlcConverted;
-		
+
 		// 获取 gap 参数
 		const gap = +document.getElementById('arg_g').value;
-		
+
 		// 转换为 SES 格式
 		const sesContent = convertPcbToSes(lastPcbData, dsnInfo, { gap: gap });
 
@@ -340,24 +347,24 @@ async function handleExportSes(evt)
 			const sesFile = new File([sesContent], fileName + '.ses', { type: 'text/plain' });
 			try {
 				await eda.pcb_Document.importAutoRouteSesFile(sesFile);
-				eda?.sys_Message?.showToastMessage?.('SES 已导入', 'success', 3);
+				eda?.sys_Message?.showToastMessage?.(t('toast.imported'), 'success', 3);
 			} catch (e) {
 				console.error('[jspcb][eda] import failed', e);
 				try {
 					if (eda?.sys_FileSystem?.saveFile) {
 						await eda.sys_FileSystem.saveFile(sesFile, sesFile.name);
-						eda?.sys_Message?.showToastMessage?.('SES 导入失败，已保存文件', 'warning', 6);
+						eda?.sys_Message?.showToastMessage?.(t('toast.importSaved'), 'warning', 6);
 					} else {
-						eda?.sys_Message?.showToastMessage?.('SES 导入失败', 'error', 6);
+						eda?.sys_Message?.showToastMessage?.(t('toast.importFail'), 'error', 6);
 					}
 				} catch (e2) {
 					console.error('[jspcb][eda] save fallback failed', e2);
-					eda?.sys_Message?.showToastMessage?.('SES 导入失败且保存失败', 'error', 8);
+					eda?.sys_Message?.showToastMessage?.(t('toast.importFailSave'), 'error', 8);
 				}
 			}
 			return;
 		}
-		
+
 		// 下载文件
 		const blob = new Blob([sesContent], { type: 'text/plain' });
 		const url = URL.createObjectURL(blob);
@@ -369,19 +376,18 @@ async function handleExportSes(evt)
 		document.body.removeChild(a);
 		URL.revokeObjectURL(url);
 	} catch (err) {
-		alert('导出失败: ' + err.message);
+		alert(t('error.export', err.message));
 		console.error(err);
 	}
 }
 
 //file onload handler
-function handleOnLoad(evt)
-{
+function handleOnLoad(evt) {
 	//the onload get a string of the dsn file
 	let content = evt.target.result;
-	originalFile = content;  // 保存原始内容
+	originalFile = content; // 保存原始内容
 	isJlcConverted = false;
-	
+
 	// 检查是否需要 JLC 格式转换
 	if (document.getElementById('jlc_convert').checked) {
 		try {
@@ -390,10 +396,10 @@ function handleOnLoad(evt)
 			console.log('JLC 格式已转换');
 		} catch (err) {
 			console.error('JLC 转换失败:', err);
-			alert('JLC 格式转换失败: ' + err.message);
+			alert(t('error.convert', err.message));
 		}
 	}
-	
+
 	file = content;
 	// 重置导出按钮
 	document.getElementById('export_ses').disabled = true;
@@ -401,18 +407,16 @@ function handleOnLoad(evt)
 }
 
 //file selection handler
-function handleFileSelect(evt)
-{
+function handleFileSelect(evt) {
 	//filelist
 	let files = evt.target.files;
 	let f = files[0];
 
 	//dsn files only.
-	if (f.name.match('.*[.]dsn'))
-	{
+	if (f.name.match('.*[.]dsn')) {
 		// 保存文件名
 		fileName = f.name.replace('.dsn', '');
-		
+
 		//file reader
 		let reader = new FileReader();
 
@@ -425,7 +429,7 @@ function handleFileSelect(evt)
 }
 
 // Resize handler to re-render SVG on window resize
-window.addEventListener('resize', function() {
+window.addEventListener('resize', function () {
 	if (lastPcbData) {
 		// Re-render with auto-scaling
 		js_pcb.view_pcb(lastPcbData, 0, 2);
@@ -436,7 +440,7 @@ window.addEventListener('resize', function() {
 document.getElementById('files').addEventListener('change', handleFileSelect, false);
 document.getElementById('go').onclick = handleOnGo;
 document.getElementById('export_ses').onclick = handleExportSes;
-document.getElementById('clear_history').onclick = function() {
+document.getElementById('clear_history').onclick = function () {
 	historyRecords = [];
 	persistHistory();
 	renderHistory();
@@ -449,7 +453,7 @@ async function tryLoadDsnFromEda() {
 	try {
 		if (typeof eda === 'undefined' || !eda?.pcb_ManufactureData?.getDsnFile) return;
 		console.log('[jspcb][eda] getDsnFile...');
-		eda?.sys_Message?.showToastMessage?.('正在导出 DSN...', 'info', 2);
+		eda?.sys_Message?.showToastMessage?.(t('toast.fetchingDsn'), 'info', 2);
 		const dsnFile = await eda.pcb_ManufactureData.getDsnFile();
 		const dsnContent = typeof dsnFile === 'string' ? dsnFile : await dsnFile.text();
 		console.log('[jspcb][eda] DSN length', dsnContent.length);
@@ -460,33 +464,45 @@ async function tryLoadDsnFromEda() {
 		const info = typeof parseDsnInfo === 'function' ? parseDsnInfo(dsnContent) : null;
 		if (info && info.fileName) fileName = info.fileName;
 		handleOnLoad({ target: { result: dsnContent } });
-		eda?.sys_Message?.showToastMessage?.('DSN 已载入', 'success', 2);
+		eda?.sys_Message?.showToastMessage?.(t('toast.dsnLoaded'), 'success', 2);
 	} catch (e) {
 		console.error('[jspcb][eda] load DSN failed', e);
-		eda?.sys_Message?.showToastMessage?.('DSN 导出失败', 'error', 6);
+		eda?.sys_Message?.showToastMessage?.(t('toast.dsnFail'), 'error', 6);
 	}
 }
 
-try {
-	const isEda = typeof eda !== 'undefined' && !!eda?.pcb_ManufactureData?.getDsnFile;
-	const fileInputWrapper = document.getElementById('file_input_wrapper');
-	const edaInputGroup = document.getElementById('eda_input_group');
-	const loadBtn = document.getElementById('load_dsn_eda');
-	const exportBtn = document.getElementById('export_ses');
+document.addEventListener('jspcb-lang-change', function () {
+	renderHistory();
+	renderLogs();
+});
 
-	if (isEda) {
-		if (fileInputWrapper) fileInputWrapper.style.display = 'none';
-		if (edaInputGroup) edaInputGroup.style.display = 'flex';
-		if (exportBtn) exportBtn.innerText = '导入 SES';
-		if (loadBtn) {
-			loadBtn.onclick = function() {
-				tryLoadDsnFromEda();
-			};
+function initializeEdaUi() {
+	try {
+		const isEda = typeof eda !== 'undefined' && !!eda?.pcb_ManufactureData?.getDsnFile;
+		const fileInputWrapper = document.getElementById('file_input_wrapper');
+		const edaInputGroup = document.getElementById('eda_input_group');
+		const loadBtn = document.getElementById('load_dsn_eda');
+		const exportBtn = document.getElementById('export_ses');
+
+		if (isEda) {
+			if (fileInputWrapper) fileInputWrapper.style.display = 'none';
+			if (edaInputGroup) edaInputGroup.style.display = 'flex';
+			if (exportBtn) {
+				exportBtn.setAttribute('data-i18n', 'ui.importSes');
+				exportBtn.innerText = t('ui.importSes');
+			}
+			if (loadBtn) {
+				loadBtn.onclick = function () {
+					tryLoadDsnFromEda();
+				};
+			}
+			tryLoadDsnFromEda();
+		} else {
+			if (exportBtn) exportBtn.innerText = t('ui.exportSes');
 		}
-		tryLoadDsnFromEda();
-	} else {
-		if (exportBtn) exportBtn.innerText = '导出 SES';
+	} catch (e) {
+		console.error('[jspcb] init ui failed', e);
 	}
-} catch (e) {
-	console.error('[jspcb] init ui failed', e);
 }
+
+jspcbI18n.ready.then(initializeEdaUi);
