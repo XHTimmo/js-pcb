@@ -2,7 +2,7 @@
 
 <a id="chinese"></a>
 
-这是一个为嘉立创EDA专业版（JLCEDA Pro）开发的自动布线扩展插件，集成了开源项目 [JS-PCB](https://github.com/vygr/JS-PCB) 的布线引擎。
+这是一个为嘉立创EDA专业版（EasyEDA）开发的自动布线扩展插件，集成了开源项目 [JS-PCB](https://github.com/vygr/JS-PCB) 的布线引擎。
 
 ## 功能特性
 
@@ -14,6 +14,7 @@
 - **布线控制**：显示实时进度，支持停止和重新开始；超时或无法布通的网络会停止重试并保留可用结果。
 - **导入方式**：保留手动导入，可选择开启“完成后自动导入”（默认关闭）；部分布通或超时结果需要确认。
 - **规则兼容**：修复 DSN 解析、间距、过孔尺寸和焊盘层处理，预览及布线支持多路径板框。
+- **共享核心与无头调用**：脚本或 Skill 可直接调用 dry-run 接口；Skill 规则为可选显式输入，普通布线不依赖 Skill。支持固定路径、禁布区、网络筛选和结构化报告。
 
 ## 使用方法
 
@@ -26,6 +27,12 @@
 
 ![界面示例](images/dialog.jpg)
 
+## 无头布线与 Skill 调用
+
+启动后可调用 `external.jspcb.getCapabilities()` 和 `external.jspcb.routeCurrentPcb(options)`，无需先打开布线窗口。省略 `rules` 即按 DSN 规则布线；固定铜和禁布区也不依赖 Skill。首版仅支持 dry-run，未实现的必选约束会明确拒绝，无头导入保持禁用。
+
+接口、坐标单位、能力边界、报告及普通/Skill 调用示例见 [无头 API 文档](docs/headless-api.md)。原有 UI 的历史记录、手动获取/导入/导出和默认关闭的自动导入保持可用。
+
 ## 已知局限性与贡献说明
 
 由于 JS-PCB 引擎本身的算法特性限制，**当前的自动布线效果可能较为一般**，特别是对于元件密度较高或规则复杂的 PCB，可能会出现：
@@ -35,7 +42,7 @@
 - 网格布线难以完整表达所有复杂设计规则，导入后仍需检查连接与 DRC。
 - 超时按每次采样计算，默认 3600 秒，0 表示不限制。
 
-本项目的主要目的是**提供一个将自动布线器集成到 JLCEDA Pro 的技术框架与参考实现**。
+本项目的主要目的是**提供一个将自动布线器集成到 EasyEDA 的技术框架与参考实现**。
 
 我们非常欢迎社区开发者参与进来，基于此框架：
 
@@ -55,13 +62,13 @@
 
 ```bash
 npm ci
-npm run test:ui
-npm run test:routing
+npm run typecheck
+npm test
 node iframe/jspcb/test_runner.js
 npm run build
 ```
 
-`test:ui` 验证语言加载与界面兼容逻辑，`test:routing` 验证实际布线引擎和 DSN→SES 转换；命令行测试默认读取 `tests/fixtures/` 下的样例，也支持传入 DSN 路径。原有 `npm test` 中的 `tests/autorouter/` 测试引用了当前仓库缺失的 `src/autorouter/` 模块，需要另行补齐；构建成功不代表已完成真实 PCB 的布线或 DRC 验证。
+`npm test` 统一运行 UI、路由和无头测试；也可分别使用 `test:ui`、`test:routing`、`test:headless`。它们验证语言加载与界面兼容逻辑、实际布线引擎和 DSN→SES 转换，以及无 Skill 调用、固定铜与约束、目标选择和文件输出。`npm run test:watch` 监听变更并重跑测试，`npm run test:coverage` 输出 Node 原生覆盖率报告。命令行测试默认读取 `tests/fixtures/` 下的样例，也支持传入 DSN 路径；构建成功不代表已完成真实 PCB 的布线或 DRC 验证。
 
 ## 第三方开源组件说明
 
@@ -69,7 +76,7 @@ npm run build
 
 - **JS-PCB** (https://github.com/vygr/JS-PCB)
     - 许可证：GNU General Public License v2.0 (GPL-2.0)
-    - 原始代码位置：`iframe/jspcb/` 目录下的核心逻辑文件（如 `router.js`, `worker.js`, `mymath.js` 等）。
+    - 原始引擎移植代码位置：`src/core/engine/`（`router.js`、`mymath.js`、`layer.js` 等）；`iframe/jspcb/worker.js` 负责 Worker 消息适配。
     - 修改说明：
         - `iframe/jspcb/index.html`: 修改了 UI 布局和样式以适配 EDA 扩展风格。
         - `iframe/jspcb/main.js`: 增加了与 JLCEDA API 通信的胶水代码（DSN 获取与 SES 导入）。
@@ -98,11 +105,12 @@ An automatic PCB routing extension for **EasyEDA (嘉立创EDA专业版)**, powe
 - **Manual and optional automatic import**: import or export SES using the button. Automatic import is **off by default**; when enabled, fully routed results can be imported automatically. Partial or timed-out results require confirmation.
 - **Routing history**: keeps the latest 10 results and their parameters, with SES downloads.
 - **Chinese and English**: follows the EDA or browser language initially, with a language switch beside the help button. Existing logs and history labels update when the language changes.
+- **Shared core and headless API**: scripts and Skills can call the router directly for dry-runs, with explicit optional constraints, protected copper, keepouts, net selection and structured reports. No Skill installation is required.
 
 ## Requirements
 
 - EasyEDA with extension support, matching `engines.eda: ^3.2.0`.
-- An open PCB document for EDA integration.
+- An open PCB for the UI workflow, or an open project and explicit PCB/board target for headless calls.
 - Node.js 20.5 or newer to build the extension.
 
 ## Build and Installation
@@ -125,6 +133,12 @@ Install the generated `.eext` package from `build/dist/` using **Extensions → 
 7. Download previous SES results from **History** when needed.
 
 In a browser environment, the interface accepts a DSN file and downloads the generated SES instead of importing it into EasyEDA.
+
+## Headless Routing and Skill Integration
+
+Startup registers `external.jspcb.getCapabilities()` and `external.jspcb.routeCurrentPcb(options)` without opening an IFrame. Omitting `rules` uses DSN rules; Skill constraints are explicit optional inputs. Protected routes and keepouts can also be used by ordinary callers. This release supports dry-run only and rejects unsupported mandatory constraints and headless import.
+
+See the [headless API documentation](docs/headless-api.md#english) for examples, coordinates, reports and capability limits. Existing history, manual DSN/SES workflows and opt-in UI automatic import remain available.
 
 ## Parameters
 
@@ -167,16 +181,18 @@ The bilingual interface and presentation improvements were partially adapted fro
 
 ```bash
 npm ci
-npm run test:ui
-npm run test:routing
+npm run typecheck
+npm test
 node iframe/jspcb/test_runner.js
 npm run build
 ```
 
+- `npm test` runs all UI, routing and headless tests. Each group can also be run separately.
 - `test:ui` checks language loading, task state, stale-worker handling and import policy.
 - `test:routing` checks the actual routing engine and DSN-to-SES conversion.
+- `test:headless` checks ordinary calls without Skill, fixed copper, constraints, target selection and artifact output.
+- `test:watch` reruns tests on changes; `test:coverage` prints Node's native coverage report.
 - The CLI runner uses the bundled DSN files in `tests/fixtures/` by default and also accepts explicit DSN paths.
-- The older `npm test` suites under `tests/autorouter/` refer to missing `src/autorouter/` modules and need separate restoration.
 
 A successful build does not establish that a real PCB passes routing or DRC validation. See [CHANGELOG.md](CHANGELOG.md) for changes.
 
@@ -184,9 +200,9 @@ A successful build does not establish that a real PCB passes routing or DRC vali
 
 The extension is distributed under the **GNU General Public License v2.0 (GPL-2.0)**. See [LICENSE](LICENSE) for the complete text.
 
-- **JS-PCB** ([vygr/JS-PCB](https://github.com/vygr/JS-PCB)): GPL-2.0. The core routing code is in `iframe/jspcb/`, including `router.js`, `worker.js`, `mymath.js` and `layer.js`.
+- **JS-PCB** ([vygr/JS-PCB](https://github.com/vygr/JS-PCB)): GPL-2.0. The ported engine is in `src/core/engine/`, including `router.js`, `mymath.js` and `layer.js`. `iframe/jspcb/worker.js` now adapts Worker messages to the shared solver.
 - `iframe/jspcb/main.js` provides DSN fetching, SES import and UI integration with EasyEDA.
-- `iframe/jspcb/dsn-normalizer.js` normalizes DSN coordinates, units and layer names.
+- `src/core/engine/dsn-normalizer.js` normalizes DSN coordinates, units and layer names.
 - The iframe interface and Worker-loading integration have been adapted for the extension environment.
 
 The original SDK template's Apache-2.0 license and JLCEDA copyright notice are retained in [LICENSES/Apache-2.0.txt](LICENSES/Apache-2.0.txt). Existing third-party notices and contributor attribution remain applicable; see [NOTICE.md](NOTICE.md).

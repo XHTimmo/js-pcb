@@ -30,7 +30,7 @@ feat: 从 #1 提取多语言与界面改进并统一许可证
 - `npx eslint src/index.ts`、14 个 JavaScript 文件的语法检查及换行格式检查通过（本仓库包元信息原有 CRLF，使用 `git -c core.whitespace=cr-at-eol diff --check`）。
 - Edge 无头浏览器检查通过：中英文切换、底部日志布局、关于弹窗与焦点恢复、数字步进边界、历史记录、旧 Worker 完成消息、SES 下载及手动导入按钮。
 - 浏览器中的 Worker 输出和 EDA API 使用模拟数据，确认布线完成不会自动导入；尚未在嘉立创EDA客户端进行真实布线、SES 导入或 DRC 验证。
-- 原有 `npm test -- --runInBand`：1 个测试套件通过、10 个套件因缺少 `src/autorouter/` 模块无法运行，属于当前基线已有问题。
+- 当时的 `npm test -- --runInBand`：1 个测试套件通过、10 个套件因缺少 `src/autorouter/` 模块无法运行。这是本 PR 的历史验证记录；该旧套件后续已删除，当前测试入口见 [README](../README.md#开发验证)。
 
 ## 署名
 

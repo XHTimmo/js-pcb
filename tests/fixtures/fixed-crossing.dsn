@@ -1,0 +1,21 @@
+(PCB "fixed-crossing"
+  (resolution mil 1000)
+  (structure
+    (layer TopLayer (type signal))
+    (layer BottomLayer (type signal))
+    (boundary (path pcb 0 0 0 120 0 120 120 0 120 0 0))
+    (via via0)
+    (rule (width 4) (clear 4)))
+  (placement (component u1 (place u1 0 0 front 0)))
+  (library
+    (image u1
+      (pin smd 1 20 60)
+      (pin smd 2 100 60)
+      (pin smd 3 60 20)
+      (pin smd 4 60 100))
+    (padstack smd (shape (circle TopLayer 8)))
+    (padstack via0 (shape (circle TopLayer 16)) (shape (circle BottomLayer 16))))
+  (network
+    (net POWER (pins u1-1 u1-2))
+    (net SIGNAL (pins u1-3 u1-4))
+    (class default POWER SIGNAL (circuit (use_via via0)) (rule (width 4) (clearance 4)))))

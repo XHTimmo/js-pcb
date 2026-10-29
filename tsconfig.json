@@ -23,7 +23,7 @@
 		"useUnknownInCatchVariables": true,
 		"alwaysStrict": true,
 		"isolatedModules": true,
-		"types": ["jest", "node"],
+		"types": ["node"],
 		"skipLibCheck": true
 	},
 	"include": ["./src/", "./tests/", "./node_modules/@jlceda/pro-api-types/"],

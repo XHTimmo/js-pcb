@@ -179,11 +179,12 @@ function appendLog(message, ...args) {
 }
 
 async function loadTextFile(relativePath) {
+	const uri = relativePath.startsWith('/') ? relativePath : '/iframe/jspcb/' + relativePath;
 	if (typeof eda !== 'undefined' && eda?.sys_FileSystem?.getExtensionFile) {
-		const extensionFile = await eda.sys_FileSystem.getExtensionFile('/iframe/jspcb/' + relativePath);
+		const extensionFile = await eda.sys_FileSystem.getExtensionFile(uri);
 		if (extensionFile) return await extensionFile.text();
 	}
-	const response = await fetch('/iframe/jspcb/' + relativePath);
+	const response = await fetch(uri);
 	if (!response.ok) throw new Error('Cannot load ' + relativePath);
 	return await response.text();
 }
@@ -194,8 +195,8 @@ async function createRoutingWorker() {
 	} catch (error) {
 		/* Use a Blob in restricted iframe environments. */
 	}
-	const sources = await Promise.all(['mymath.js', 'layer.js', 'router.js', 'worker.js'].map(loadTextFile));
-	sources[3] = sources[3].replace(/^\s*importScripts\([^)]*\);\s*/m, '');
+	const sources = await Promise.all(['/dist/router-core.js', 'worker.js'].map(loadTextFile));
+	sources[1] = sources[1].replace(/^\s*importScripts\([^)]*\);\s*/m, '');
 	const url = URL.createObjectURL(new Blob([sources.join('\n')], { type: 'application/javascript' }));
 	try {
 		const candidate = new Worker(url);

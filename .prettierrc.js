@@ -20,7 +20,7 @@ module.exports = {
 	// Preserve the existing CRLF metadata files to avoid whole-file diffs in commits.
 	overrides: [
 		{
-			files: ['package.json', 'package-lock.json', '.prettierrc.js'],
+			files: ['package.json', 'package-lock.json', 'tsconfig.json', '.prettierrc.js'],
 			options: { endOfLine: 'crlf' },
 		},
 	],

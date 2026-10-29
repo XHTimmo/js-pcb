@@ -20,7 +20,7 @@
 	},
 	"homepage": "https://github.com/XHTimmo/js-pcb",
 	"bugs": "https://github.com/XHTimmo/js-pcb/issues",
-	"activationEvents": {},
+	"activationEvents": { "onStartupFinished": true },
 	"entry": "./dist/index",
 	"dependentExtensions": {},
 	"headerMenus": {

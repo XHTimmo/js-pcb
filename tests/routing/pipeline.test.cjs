@@ -4,19 +4,24 @@ const path = require('node:path');
 const vm = require('node:vm');
 const test = require('node:test');
 const root = path.resolve(__dirname, '../..');
-const dir = path.join(root, 'iframe/jspcb');
+const coreBundle = require('esbuild').buildSync({
+	entryPoints: [path.join(root, 'src/core/index.js')],
+	bundle: true,
+	platform: 'node',
+	format: 'cjs',
+	write: false,
+}).outputFiles[0].text;
 
 function runtime() {
 	const messages = [];
-	const context = vm.createContext({
-		console: { log() {}, warn() {}, error() {} },
-		postMessage: (data) => messages.push(structuredClone(data)),
-		addEventListener() {},
-	});
-	context.window = context;
-	context.importScripts = (...files) =>
-		files.forEach((file) => vm.runInContext(fs.readFileSync(path.join(dir, file), 'utf8'), context, { filename: file }));
-	context.importScripts('mymath.js', 'layer.js', 'router.js', 'dsn2pcb.js', 'dsn-normalizer.js', 'pcb2ses.js', 'worker.js');
+	const context = vm.createContext({ module: { exports: {} }, console: { log() {}, warn() {}, error() {} } });
+	vm.runInContext(coreBundle, context);
+	const core = context.module.exports;
+	context.js_pcb = core.engine;
+	context.normalizeDsn = core.normalizeDsn;
+	context.parseDsnInfo = core.parseDsnInfo;
+	context.convertPcbToSes = core.convertPcbToSes;
+	context.pcb_thread = (args) => core.solveLegacyParameters(args, { onEvent: (data) => messages.push(structuredClone(data)) });
 	return { context, messages };
 }
 
