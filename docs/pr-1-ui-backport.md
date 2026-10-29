@@ -9,7 +9,7 @@ feat: 从 #1 提取多语言与界面改进并统一许可证
 ## 来源与贡献者
 
 - 部分提取自 [#1](https://github.com/XHTimmo/js-pcb/pull/1)，不是对该 PR 的整体合并。
-- 原贡献者：（[@easyeda2021](https://github.com/easyeda2021)）。
+- 原贡献者：[@easyeda2021](https://github.com/easyeda2021)。
 - 来源提交：`2b18d934047c80a281b3b3b7d8689604ead98a3e`、`81c3b5a8d27c9f2fbe8b5e65806b0e96103cff9b`。
 - 来源和署名保留在 NOTICE.md、相关源文件及关于弹窗中。
 
@@ -32,10 +32,6 @@ feat: 从 #1 提取多语言与界面改进并统一许可证
 - 浏览器中的 Worker 输出和 EDA API 使用模拟数据，确认布线完成不会自动导入；尚未在嘉立创EDA客户端进行真实布线、SES 导入或 DRC 验证。
 - 原有 `npm test -- --runInBand`：1 个测试套件通过、10 个套件因缺少 `src/autorouter/` 模块无法运行，属于当前基线已有问题。
 
-## 共同作者
+## 署名
 
-提交时保留以下 trailer：
-
-```text
-Co-authored-by:
-```
+文档与界面保留 [@easyeda2021](https://github.com/easyeda2021) 的 GitHub 署名；原始提交及共同作者信息保留在 Git 历史中。

@@ -1,5 +1,5 @@
 /**
- * Adapted from PR #1 by  (@easyeda2021).
+ * Adapted from PR #1 by @easyeda2021.
  * https://github.com/XHTimmo/js-pcb/pull/1
  * Modified for the existing manual-import workflow; see NOTICE.md.
  */

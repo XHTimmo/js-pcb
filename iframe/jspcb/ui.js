@@ -1,5 +1,5 @@
 /**
- * Display helpers adapted from PR #1 by summving (@easyeda2021).
+ * Display helpers adapted from PR #1 by @easyeda2021.
  * https://github.com/XHTimmo/js-pcb/pull/1 — see NOTICE.md.
  */
 'use strict';
