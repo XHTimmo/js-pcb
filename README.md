@@ -1,4 +1,6 @@
-[English](#english)
+[简体中文](#chinese) · [English](#english)
+
+<a id="chinese"></a>
 
 这是一个为嘉立创EDA专业版（JLCEDA Pro）开发的自动布线扩展插件，集成了开源项目 [JS-PCB](https://github.com/vygr/JS-PCB) 的布线引擎。
 
@@ -45,9 +47,9 @@
 
 ## 贡献来源
 
-本次多语言与界面展示改进部分提取并改编自 [PR #1](https://github.com/XHTimmo/js-pcb/pull/1)，感谢原贡献者 **summving <summving@easyeda.com>**（[@easyeda2021](https://github.com/easyeda2021)）。保留历史记录与手动导入/导出流程；详细来源及第三方版权声明见 [NOTICE.md](NOTICE.md)，本次 PR 描述草稿见 [docs/pr-1-ui-backport.md](docs/pr-1-ui-backport.md)。
+本次多语言与界面展示改进部分提取并改编自 [PR #1](https://github.com/XHTimmo/js-pcb/pull/1)，感谢原贡献者 [@easyeda2021](https://github.com/easyeda2021)。保留历史记录与手动导入/导出流程；详细来源及第三方版权声明见 [NOTICE.md](NOTICE.md)，本次 PR 描述草稿见 [docs/pr-1-ui-backport.md](docs/pr-1-ui-backport.md)。
 
-后续通过 [PR #3](https://github.com/XHTimmo/js-pcb/pull/3) 整合 **summving / @easyeda2021** 的 DSN、布线、焊盘层和过孔修复，同时保留主线的历史记录、手动操作、双语界面与署名。完整来源见 [NOTICE.md](NOTICE.md)。
+后续通过 [PR #3](https://github.com/XHTimmo/js-pcb/pull/3) 整合 [@easyeda2021](https://github.com/easyeda2021) 的 DSN、布线、焊盘层和过孔修复，同时保留主线的历史记录、手动操作、双语界面与署名。完整来源见 [NOTICE.md](NOTICE.md)。
 
 ## 开发验证
 
@@ -77,9 +79,9 @@ npm run build
 
 ---
 
-# English
+<a id="english"></a>
 
-## JS-PCB Autorouter for EasyEDA
+# JS-PCB Autorouter for EasyEDA
 
 An automatic PCB routing extension for **EasyEDA (嘉立创EDA专业版)**, powered by the open-source [JS-PCB](https://github.com/vygr/JS-PCB) engine.
 
@@ -157,7 +159,7 @@ This project provides a framework and reference implementation for integrating a
 
 ## Contribution Sources
 
-The bilingual interface and presentation improvements were partially adapted from [PR #1](https://github.com/XHTimmo/js-pcb/pull/1) by **summving <summving@easyeda.com>** ([@easyeda2021](https://github.com/easyeda2021)). These changes were integrated through [PR #2](https://github.com/XHTimmo/js-pcb/pull/2), preserving routing history and manual SES import/export.
+The bilingual interface and presentation improvements were partially adapted from [PR #1](https://github.com/XHTimmo/js-pcb/pull/1) by [@easyeda2021](https://github.com/easyeda2021). These changes were integrated through [PR #2](https://github.com/XHTimmo/js-pcb/pull/2), preserving routing history and manual SES import/export.
 
 [PR #3](https://github.com/XHTimmo/js-pcb/pull/3) integrated further DSN parsing, routing, pad-layer and via fixes from the same contributor. The integration preserves the bilingual interface, attribution, history and manual controls, and makes automatic import optional. See [NOTICE.md](NOTICE.md) for source commits and third-party attribution.
 
