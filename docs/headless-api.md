@@ -76,6 +76,10 @@ return await external.jspcb.routeCurrentPcb({
 
 对未实现的必选约束，报告返回 `rejected` 和 `unsupported`，不会当作检查通过。角度定义为线段间的转向角，直线不计，分支交点也参加检查；此定义不替代外部 Skill 的完整语义。
 
+转角检查先按**同网、同铜层的中心线交点**构建方向图，包含端点接入线段内部的 T 交点和两条线段内部的交叉。共线重叠、重复边和反向重复边的同向射线只保留一份，每对不同方向计算一次转向角；0° 和 180° 不计。因而普通直角拐弯计 1，垂直 T 分支计 2，垂直十字交叉计 4。等价拆段或合并不改变这些角度计数及规则验收结果；原始线段数量 `tracks` 仍按输入计数。重叠图元的来源 ID 会合并到违规的 `objectIds`，而不是重复产生同一角度违规。
+
+不同网络、不同层的投影交叉及过孔换层不会合成平面转角。仅靠线宽或焊盘铜面接触、但中心线没有交点的连接不新增角度；当前也不对焊盘内部的中心线交点额外豁免。交点规范化仅用于检查，不拆分或改写固定铜、生成路径和 SES。
+
 ## 固定路径、禁布区与网络选择
 
 所有输入坐标、宽度和间距均为 **原始 DSN 的 mil 坐标**，不是预览网格坐标、毫米或未转换的 EDA 画布坐标。层可使用 DSN 铜层顺序的零基索引，或原始层名；`TopLayer` / `BottomLayer` 也接受 `F.Cu` / `B.Cu` 别名。
@@ -127,7 +131,7 @@ const options = {
 - `status`：`dry-run` 表示所有所选网络物理连通且已实现的检查通过；`partial` 表示未完全布通、取消或预算结束；输入、约束、几何或输出失败为 `rejected`。首版不会返回 `imported`。
 - `routing.status`：独立描述 `not-run`、`complete`、`partial`、`timeout` 或 `cancelled`。
 - `coverage`：根据导线、过孔、固定铜与焊盘的实际接触关系计算，不能仅凭求解器的完成标记判定。
-- `geometry`：已测量的线段、过孔、斜线段和直角交点数量；未测量项为 `null`。直角数包含分支交点，固定铜也计入几何。
+- `geometry`：已测量的线段、过孔、斜线段数量，以及交点处去重方向间的直角数量；未测量项为 `null`。`rightAngleTurns` 包含分支和内部交叉（T 分支计 2、十字交叉计 4），固定铜也计入几何。
 - `ruleChecks`：只记录请求的附加规则，分别标出 `enforced` 与 `validation`；状态使用 `passed / failed / unsupported / not-checked`。
 - `imported`、`execution.imported` 和 `execution.saved`：首版始终为 `false`，其中 `saved` 指 PCB 文档保存，不表示文件输出。
 - `routerCommit`：构建时的核心版本；工作区修改构建带 `-dirty`，直接运行未打包源码为 `unversioned`。
@@ -158,7 +162,9 @@ The examples above show plain routing, explicit rule requests, fixed routes, kee
 
 Protected straight segments retain their exact geometry through retries and samples, connect their own net, obstruct other nets and keep explicit net names in SES. Existing DSN wiring is **not automatically preserved**. Pass required copper explicitly as `fixedRoutes`; `preserveExistingRoutes: true` is rejected until full collection is implemented.
 
-Copper and board-edge gaps are applied during solving and checked afterward. Turn-angle and right-angle requests validate candidates, including branch junctions; they do not force the solver to construct a compliant route. Pad exit leads, explicit chamfer/arc construction, via-to-silkscreen and via-to-test-point checks are unsupported and reject the request. A Skill must supply all its mandatory requirements rather than silently dropping unsupported rules.
+Copper and board-edge gaps are applied during solving and checked afterward. Turn-angle and right-angle requests validate candidates, including branch junctions; they do not force the solver to construct a compliant route. Validation nodes centerline contacts within the same net and copper layer, including endpoint-to-interior T contacts and interior crossings. Collinear overlaps and duplicate/reversed edges contribute only one ray per direction. Each distinct direction pair is checked once, excluding 0° and 180°: an ordinary right-angle corner counts as 1, an orthogonal T as 2, and an orthogonal cross as 4. Equivalent subdivision or merging does not change angle counts or acceptance. Raw `tracks` still counts source segments; overlapping source IDs are combined in a violation's `objectIds`.
+
+Different nets, projected crossings on other layers and via transitions do not form planar turn angles. Contact through copper width or pad area alone does not create a centerline junction, and no additional exemption is applied to centerline junctions inside pads. This graph is for validation only; paths, fixed copper and SES geometry remain unchanged. Pad exit leads, explicit chamfer/arc construction, via-to-silkscreen and via-to-test-point checks are unsupported and reject the request. A Skill must supply all its mandatory requirements rather than silently dropping unsupported rules.
 
 This release supports **dry-run only**. `mode: 'import'` is rejected; it never imports SES, saves the PCB or runs PCB DRC. Reports separate routing outcome, constraint checks, coverage and execution. Coverage is checked against physical copper/pad connectivity. Unmeasured geometry is `null`, and local object IDs are not EDA primitive UUIDs.
 

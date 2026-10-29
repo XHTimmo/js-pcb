@@ -1,7 +1,7 @@
 {
 	"About": "关于",
 	"EasyEDA extension SDK v": "嘉立创EDA 扩展 SDK v${1}",
-	"ui.windowTitle": "JS-PCB 自动布线器 v1.6.0",
+	"ui.windowTitle": "JS-PCB 自动布线器 v1.6.1",
 	"ui.appTitle": "JS-PCB 自动布线器",
 	"ui.about": "关于",
 	"ui.language": "切换语言",
@@ -37,7 +37,7 @@
 	"ui.legendThru": "通孔焊盘",
 	"ui.progress": "${1} / ${2} (${3}%)",
 	"ui.aboutTitle": "关于 JS-PCB 自动布线器",
-	"ui.aboutVersion": "JS-PCB 自动布线器 v1.6.0 | 基于",
+	"ui.aboutVersion": "JS-PCB 自动布线器 v1.6.1 | 基于",
 	"ui.aboutDesc1": "将当前 PCB 导出为 DSN，调用 JS-PCB 布线引擎，在右侧实时预览布线结果，布线完成后自动导入 PCB。",
 	"ui.aboutDesc2": "打开窗口时会自动从 EDA 获取并载入当前 PCB 的 DSN。",
 	"ui.close": "关闭",

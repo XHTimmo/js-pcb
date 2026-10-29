@@ -1,6 +1,7 @@
 'use strict';
 const geometry = require('./geometry.js');
 const { WORLD_PER_MIL } = require('./constraints.js');
+const { buildPlanarJunctions } = require('./junctions.js');
 
 function netConnected(track, segments) {
 	const copper = segments.filter((segment) => segment.net === track[5]);
@@ -30,7 +31,6 @@ function netConnected(track, segments) {
 function inspectResult(data, input, config, constraints) {
 	const segments = [],
 		violations = [],
-		junctions = new Map(),
 		viaKeys = new Set();
 	let tracks = 0,
 		diagonalSegments = 0,
@@ -60,18 +60,10 @@ function inspectResult(data, input, config, constraints) {
 				else {
 					tracks++;
 					if (Math.abs(a[0] - b[0]) > geometry.EPS && Math.abs(a[1] - b[1]) > geometry.EPS) diagonalSegments++;
-					for (const [point, other] of [
-						[a, b],
-						[b, a],
-					]) {
-						const key = JSON.stringify([net, point[2], +point[0].toFixed(7), +point[1].toFixed(7)]);
-						if (!junctions.has(key)) junctions.set(key, []);
-						junctions.get(key).push({ dx: other[0] - point[0], dy: other[1] - point[1], segment });
-					}
 				}
 			}
 	}
-	for (const junction of junctions.values())
+	for (const junction of buildPlanarJunctions(segments))
 		for (let i = 0; i < junction.length; i++)
 			for (let j = i + 1; j < junction.length; j++) {
 				const a = junction[i],
@@ -79,19 +71,11 @@ function inspectResult(data, input, config, constraints) {
 				const dot = (a.dx * b.dx + a.dy * b.dy) / Math.hypot(a.dx, a.dy) / Math.hypot(b.dx, b.dy);
 				const angle = 180 - (Math.acos(Math.max(-1, Math.min(1, dot))) * 180) / Math.PI;
 				if (angle < 1e-5 || Math.abs(angle - 180) < 1e-5) continue;
+				const objectIds = [...new Set([...a.ids, ...b.ids])].sort();
 				if (Math.abs(angle - 90) < 1e-5) {
 					rightAngleTurns++;
 					if (config.rules?.forbidRightAngle)
-						addViolation(
-							'forbidRightAngle',
-							'RIGHT_ANGLE',
-							'Right-angle copper junction',
-							a.segment.net,
-							[a.segment.id, b.segment.id],
-							angle,
-							45,
-							'deg',
-						);
+						addViolation('forbidRightAngle', 'RIGHT_ANGLE', 'Right-angle copper junction', a.segment.net, objectIds, angle, 45, 'deg');
 				}
 				if (config.rules?.allowedTurnAnglesDeg && !config.rules.allowedTurnAnglesDeg.some((value) => Math.abs(value - angle) < 1e-4))
 					addViolation(
@@ -99,7 +83,7 @@ function inspectResult(data, input, config, constraints) {
 						'TURN_ANGLE',
 						'Copper junction angle is not allowed',
 						a.segment.net,
-						[a.segment.id, b.segment.id],
+						objectIds,
 						angle,
 						undefined,
 						'deg',

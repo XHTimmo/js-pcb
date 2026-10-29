@@ -1,7 +1,7 @@
 {
 	"About": "About",
 	"EasyEDA extension SDK v": "EasyEDA extension SDK v${1}",
-	"ui.windowTitle": "JsPCB Autorouter v1.6.0",
+	"ui.windowTitle": "JsPCB Autorouter v1.6.1",
 	"ui.appTitle": "JS-PCB Autorouter",
 	"ui.about": "About",
 	"ui.language": "Switch language",
@@ -37,7 +37,7 @@
 	"ui.legendThru": "Through-hole pads",
 	"ui.progress": "${1} / ${2} (${3}%)",
 	"ui.aboutTitle": "About JS-PCB Autorouter",
-	"ui.aboutVersion": "JsPCB Autorouter v1.6.0 | Based on",
+	"ui.aboutVersion": "JsPCB Autorouter v1.6.1 | Based on",
 	"ui.aboutDesc1": "Exports the current PCB as a DSN, runs the JS-PCB routing engine, previews the result live, and imports it into the PCB when finished.",
 	"ui.aboutDesc2": "The current PCB DSN is fetched from the EDA automatically when the window opens.",
 	"ui.close": "Close",

@@ -3,7 +3,7 @@
 	"uuid": "fe81c92e8cae445f9e4e4117058555f5",
 	"displayName": "JsPCB自动布线",
 	"description": "基于 JS-PCB 的自动布线器",
-	"version": "1.6.0",
+	"version": "1.6.1",
 	"publisher": "JS-PCB",
 	"engines": {
 		"eda": "^3.2.0"

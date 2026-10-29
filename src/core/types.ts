@@ -36,6 +36,7 @@ export interface RouteRules {
 	/** Audit metadata only; it does not imply conformance to a complete Skill specification. */
 	skillVersion?: string;
 	padExit?: { mode: 'orthogonal'; leadMil: number };
+	/** Validates distinct planar centerline directions at same-net, same-layer contacts, including T/cross junctions. */
 	allowedTurnAnglesDeg?: number[];
 	forbidRightAngle?: boolean;
 	cornerStyle?: 'chamfer45' | 'arc';
@@ -91,6 +92,7 @@ export interface RouteReport {
 		tracks: number | null;
 		vias: number | null;
 		diagonalSegments: number | null;
+		/** Deduplicated 90-degree direction pairs; an orthogonal T counts as 2 and a cross as 4. */
 		rightAngleTurns: number | null;
 		nonOrthogonalPadExits: number | null;
 	};

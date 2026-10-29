@@ -49,6 +49,16 @@ test('both locales cover UI, dynamic strings and identical interpolation placeho
 	for (const [, key] of keys) assert.ok(key in dictionaries.en, `Missing translation: ${key}`);
 });
 
+test('the visible and localized extension versions match the release manifest', () => {
+	const { version } = JSON.parse(read('extension.json'));
+	assert.match(version, /^\d+\.\d+\.\d+$/);
+	assert.equal(read('iframe/jspcb/index.html').match(/id="extension_version">([^<]+)</)[1], version);
+	for (const dictionary of Object.values(dictionaries)) {
+		for (const key of ['ui.windowTitle', 'ui.aboutVersion']) assert.ok(dictionary[key].includes('v' + version), key);
+	}
+	assert.ok(read('CHANGELOG.md').includes('## [' + version + ']'));
+});
+
 test('EDA language takes priority over browser language and updates document language', async () => {
 	const app = runtime({ browserLanguage: 'en-US', eda: { sys_I18n: { getCurrentLanguage: async () => 'zh-Hant' } } });
 	await app.i18n.ready;
